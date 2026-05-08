@@ -119,26 +119,82 @@ El workflow `.github/workflows/terraform.yml` automatiza el despliegue de infrae
 | Push a `main` (cambios en `terraform/` o `frontend/`) | Build frontend → `terraform plan` → `terraform apply` |
 | PR a `main` (cambios en `terraform/` o `frontend/`) | Build frontend → `terraform plan` (solo muestra cambios, no aplica) |
 
-### Configuración de GitHub
+### Cómo correr el pipeline desde cero
 
-En **Settings → Secrets and variables → Actions** del repositorio:
+Estos pasos se hacen una sola vez al configurar el repo. Cada integrante usa sus propias credenciales y buckets.
 
-**Secrets** (se renuevan con cada sesión del lab):
+#### 1. Crear el bucket de Terraform state
 
-| Secret | Descripción |
+El state de Terraform se guarda en S3 para que sea compartido entre máquinas y runs del pipeline. Este bucket hay que crearlo **manualmente antes** de correr el pipeline por primera vez (Terraform no puede crearse su propio backend).
+
+Con las credenciales del lab configuradas localmente:
+
+```bash
+aws s3api create-bucket \
+  --bucket <nombre-unico-para-tu-state> \
+  --region us-east-1
+```
+
+> Los nombres de buckets son globales en AWS. Usá algo único, por ejemplo `cloud-presti-tfstate-tuapellido`.
+
+#### 2. Configurar Secrets y Variables en GitHub
+
+En tu repositorio: **Settings → Secrets and variables → Actions**
+
+**Secrets** (pestaña "Secrets") — se renuevan con cada sesión del lab:
+
+| Secret | Dónde conseguirlo |
 |---|---|
-| `AWS_ACCESS_KEY_ID` | Access key de AWS |
-| `AWS_SECRET_ACCESS_KEY` | Secret key de AWS |
-| `AWS_SESSION_TOKEN` | Session token (requerido en cuentas de laboratorio) |
+| `AWS_ACCESS_KEY_ID` | AWS Academy → Start Lab → "AWS Details" → "AWS CLI" |
+| `AWS_SECRET_ACCESS_KEY` | ídem |
+| `AWS_SESSION_TOKEN` | ídem |
 
-**Variables** (se configuran una sola vez):
+**Variables** (pestaña "Variables") — se configuran una sola vez:
 
-| Variable | Ejemplo | Descripción |
-|---|---|---|
-| `TF_STATE_BUCKET` | `cloud-presti-tfstate` | Bucket S3 para el Terraform state |
-| `TF_FRONTEND_BUCKET_NAME` | `cloud-presti-frontend` | Bucket S3 del frontend |
+| Variable | Valor |
+|---|---|
+| `TF_STATE_BUCKET` | El nombre del bucket que creaste en el paso 1 |
+| `TF_FRONTEND_BUCKET_NAME` | Nombre del bucket donde se va a hostear el frontend (también debe ser único, ej: `cloud-presti-frontend-tuapellido`) |
 
-> **Nota sobre cuentas de laboratorio**: las credenciales temporales de AWS Academy vencen cada 4–12 horas. Cuando el workflow falle por autenticación, actualizá los tres Secrets desde la consola del lab y el próximo run funcionará.
+#### 3. Triggerear el pipeline
+
+Cualquier push a `main` que toque archivos en `terraform/` o `frontend/` dispara el pipeline. Si no tenés cambios pendientes:
+
+```bash
+git commit --allow-empty -m "ci: trigger pipeline"
+git push origin main
+```
+
+El progreso se ve en **Actions** del repositorio. Al finalizar, el step **Terraform Apply** muestra el output `website_endpoint` con la URL del frontend.
+
+#### Credenciales vencidas
+
+Las credenciales de AWS Academy vencen cada 4–12 horas. Si el pipeline falla con error de autenticación, actualizá los tres Secrets (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`) con los valores nuevos de la consola del lab y volvé a correr el pipeline.
+
+#### Destruir la infraestructura
+
+Para no generar costos cuando no se usa:
+
+```bash
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+export AWS_SESSION_TOKEN=...
+
+cd terraform
+
+terraform init \
+  -backend-config="bucket=<tu-bucket-de-state>" \
+  -backend-config="key=terraform.tfstate" \
+  -backend-config="region=us-east-1"
+
+terraform destroy
+```
+
+Después eliminar el bucket de state (Terraform no se destruye a sí mismo):
+
+```bash
+aws s3 rb s3://<tu-bucket-de-state> --force
+```
 
 ---
 
