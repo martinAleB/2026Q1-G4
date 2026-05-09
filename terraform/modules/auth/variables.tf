@@ -4,8 +4,13 @@ variable "project_name" {
   default     = "cloud-presti"
 }
 
-variable "frontend_callback_url" {
-  description = "URL temporal de callback para el entorno de desarrollo"
+variable "frontend_url" {
+  description = "URL del frontend (S3) a donde redirigir después del login"
   type        = string
-  default     = "http://localhost:5173/"
+}
+
+variable "region" {
+  description = "Región de AWS"
+  type        = string
+  default     = "us-east-1"
 }

@@ -1,7 +1,7 @@
 resource "aws_cognito_user_pool" "main" {
   name = "${var.project_name}-user-pool"
 
-  alias_attributes         = ["email"]
+  username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
 
   password_policy {
@@ -28,8 +28,7 @@ resource "aws_cognito_user_pool_client" "main" {
   allowed_oauth_flows                  = ["code"]
   allowed_oauth_scopes                 = ["email", "openid", "profile"]
   
-  callback_urls = [var.frontend_callback_url]
-  logout_urls   = [var.frontend_callback_url]
-
+  callback_urls = ["${aws_apigatewayv2_api.main.api_endpoint}/callback"]
+  
   supported_identity_providers = ["COGNITO"]
 }
