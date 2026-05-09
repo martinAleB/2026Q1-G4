@@ -33,6 +33,9 @@ jobs:
         with:
           terraform_version: "~1.9"
 
+      - name: Empty Frontend Bucket
+        run: aws s3 rm s3://${{ vars.TF_FRONTEND_BUCKET_NAME }} --recursive
+
       - name: Terraform Init
         run: |
           terraform init \
