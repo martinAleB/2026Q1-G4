@@ -12,6 +12,7 @@ const CreateAccountPage = lazy(() => import('@/pages/CreateAccountPage'))
 const ProductsPage = lazy(() => import('@/pages/dashboard/ProductsPage'))
 const ParametersPage = lazy(() => import('@/pages/dashboard/ParametersPage'))
 const PortfolioPage = lazy(() => import('@/pages/dashboard/PortfolioPage'))
+const SimulationsPage = lazy(() => import('@/pages/dashboard/SimulationsPage'))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 
 function PageLoader() {
@@ -70,6 +71,10 @@ export const router = createBrowserRouter([
       {
         path: 'portfolio',
         element: withSuspense(PortfolioPage),
+      },
+      {
+        path: 'simulations',
+        element: withSuspense(SimulationsPage),
       },
     ],
   },
