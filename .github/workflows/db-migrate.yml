@@ -1,0 +1,61 @@
+name: DB Migrate
+
+on:
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token:     ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region:            us-east-1
+
+      - name: Build and push Docker image to ECR
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          ECR_URL="${ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/cloud-presti-flyway"
+          echo "ECR_URL=${ECR_URL}" >> $GITHUB_ENV
+
+          aws ecr get-login-password --region us-east-1 \
+            | docker login --username AWS --password-stdin "${ECR_URL}"
+
+          docker build -t "${ECR_URL}:latest" db/
+          docker push "${ECR_URL}:latest"
+
+      - name: Terraform init + apply (crea Lambda si no existe)
+        working-directory: terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=terraform.tfstate" \
+            -backend-config="region=us-east-1" \
+            -backend-config="dynamodb_table=${{ vars.TF_LOCK_TABLE }}"
+          terraform apply -auto-approve -target=aws_lambda_function.flyway
+
+      - name: Update Lambda image
+        run: |
+          aws lambda update-function-code \
+            --function-name cloud-presti-flyway \
+            --image-uri "${ECR_URL}:latest"
+          aws lambda wait function-updated \
+            --function-name cloud-presti-flyway
+
+      - name: Run migrations
+        run: |
+          aws lambda invoke \
+            --function-name cloud-presti-flyway \
+            --log-type Tail \
+            --query 'LogResult' \
+            --output text \
+            /tmp/response.json | base64 -d
+
+          cat /tmp/response.json
+          grep -v '"FunctionError"' /tmp/response.json || exit 1
