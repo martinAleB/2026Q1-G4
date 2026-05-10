@@ -1,0 +1,9 @@
+{
+  "name": "simulations-api",
+  "version": "1.0.0",
+  "description": "API Gateway handler for simulations (Producer)",
+  "main": "index.js",
+  "dependencies": {
+    "uuid": "^9.0.1"
+  }
+}
