@@ -1,25 +1,20 @@
-const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, PutCommand, GetCommand } = require('@aws-sdk/lib-dynamodb');
 const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
 const { v4: uuidv4 } = require('uuid');
 
-const dynamoClient = new DynamoDBClient({});
-const docClient = DynamoDBDocumentClient.from(dynamoClient);
 const sqsClient = new SQSClient({});
 
-const TABLE_NAME = process.env.DYNAMODB_TABLE_NAME || 'Simulations';
 const QUEUE_URL = process.env.SQS_QUEUE_URL;
 
 exports.handler = async (event) => {
     try {
         console.log("Evento recibido:", JSON.stringify(event));
 
-        const { httpMethod, resource, pathParameters, body } = event;
+        const { httpMethod, body } = event;
 
         const headers = {
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Headers": "Content-Type,Authorization",
-            "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+            "Access-Control-Allow-Methods": "OPTIONS,POST"
         };
 
         if (httpMethod === 'OPTIONS') {
@@ -31,8 +26,14 @@ exports.handler = async (event) => {
                 return { statusCode: 400, headers, body: JSON.stringify({ error: "Body is missing" }) };
             }
 
-            const parsedBody = JSON.parse(body);
+            let parsedBody;
+            try {
+                parsedBody = JSON.parse(body);
+            } catch (parseError) {
+                return { statusCode: 400, headers, body: JSON.stringify({ error: "Invalid JSON in request body" }) };
+            }
             const cuit = parsedBody.cuit;
+            const fintechId = parsedBody.fintech_id || "default_fintech"; // Para probar desde Postman
 
             if (!cuit) {
                 return { statusCode: 400, headers, body: JSON.stringify({ error: "Missing 'cuit' in request body" }) };
@@ -41,27 +42,43 @@ exports.handler = async (event) => {
             const taskId = uuidv4();
             const timestamp = new Date().toISOString();
 
-            await docClient.send(new PutCommand({
-                TableName: TABLE_NAME,
-                Item: {
-                    task_id: taskId,
-                    cuit: cuit,
-                    status: 'PROCESSING',
-                    created_at: timestamp
+            if (DYNAMODB_TABLE) {
+                try {
+                    await dynamoClient.send(new PutItemCommand({
+                        TableName: DYNAMODB_TABLE,
+                        Item: {
+                            pk: { S: `TASK#${taskId}` },
+                            sk: { S: `METADATA` },
+                            task_id: { S: taskId },
+                            fintech_id: { S: fintechId },
+                            cuit: { S: cuit },
+                            status: { S: "PROCESSING" },
+                            created_at: { S: timestamp }
+                        }
+                    }));
+                    console.log(`Registro creado en DynamoDB para task_id: ${taskId}`);
+                } catch (dbError) {
+                    console.error("Error guardando en DynamoDB:", dbError);
+                    return { statusCode: 500, headers, body: JSON.stringify({ error: "Error interno al inicializar simulación" }) };
                 }
-            }));
+            } else {
+                console.warn("DYNAMODB_TABLE_NAME no está definida.");
+            }
 
             if (QUEUE_URL) {
                 await sqsClient.send(new SendMessageCommand({
                     QueueUrl: QUEUE_URL,
                     MessageBody: JSON.stringify({
                         task_id: taskId,
-                        cuit: cuit
+                        cuit: cuit,
+                        fintech_id: fintechId,
+                        timestamp: timestamp
                     })
                 }));
                 console.log(`Mensaje enviado a SQS para task_id: ${taskId}`);
             } else {
                 console.warn("SQS_QUEUE_URL no está definida en las variables de entorno.");
+                return { statusCode: 500, headers, body: JSON.stringify({ error: "Configuración interna del servidor incompleta (SQS)" }) };
             }
 
             return {
@@ -75,35 +92,10 @@ exports.handler = async (event) => {
             };
         }
 
-        if (httpMethod === 'GET' && pathParameters && pathParameters.task_id) {
-            const taskId = pathParameters.task_id;
-
-            const response = await docClient.send(new GetCommand({
-                TableName: TABLE_NAME,
-                Key: {
-                    task_id: taskId
-                }
-            }));
-
-            if (!response.Item) {
-                return {
-                    statusCode: 404,
-                    headers,
-                    body: JSON.stringify({ error: "Task ID no encontrado" })
-                };
-            }
-
-            return {
-                statusCode: 200,
-                headers,
-                body: JSON.stringify(response.Item)
-            };
-        }
-
         return {
             statusCode: 404,
             headers,
-            body: JSON.stringify({ error: "Ruta no encontrada" })
+            body: JSON.stringify({ error: "Ruta no encontrada o método no permitido" })
         };
 
     } catch (error) {

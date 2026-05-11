@@ -1,6 +1,5 @@
 import json
 import os
-import boto3
 import urllib.request
 import urllib.error
 from decimal import Decimal
@@ -10,22 +9,59 @@ import pandas as pd
 import numpy as np
 import joblib
 import tflite_runtime.interpreter as tflite
+import boto3
+import datetime
 
-from src.preprocessing.load_data import features_desde_api
-from src.model.predict import (
+from engine.src.preprocessing.load_data import features_desde_api
+from engine.src.model.predict import (
     FEATURE_COLUMNS, 
     _read_feature_columns, 
     _read_fill_values, 
     _build_features
 )
 
-dynamodb = boto3.resource('dynamodb', region_name=os.getenv('AWS_REGION', 'us-east-1'))
-TABLE_NAME = os.getenv('DYNAMODB_TABLE_NAME', 'Simulations')
-
 _INTERPRETER = None
 _SCALER = None
 _FEATURE_COLUMNS = None
 _FILL_VALUES = None
+
+dynamodb = boto3.client('dynamodb')
+DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE_NAME')
+
+def update_simulation_status(fintech_id: str, timestamp: str, task_id: str, status: str, score: float = None, error: str = None):
+    if not DYNAMODB_TABLE:
+        print("DYNAMODB_TABLE_NAME no definida, omitiendo guardado.")
+        return
+        
+    try:
+        update_expression = "SET #st = :status, updated_at = :now"
+        expression_values = {
+            ":status": {"S": status},
+            ":now": {"S": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+        }
+        expression_names = {"#st": "status"}
+        
+        if score is not None:
+            update_expression += ", score = :score"
+            expression_values[":score"] = {"N": str(score)}
+            
+        if error is not None:
+            update_expression += ", error_message = :error"
+            expression_values[":error"] = {"S": str(error)}
+            
+        dynamodb.update_item(
+            TableName=DYNAMODB_TABLE,
+            Key={
+                "pk": {"S": f"FINTECH#{fintech_id}"},
+                "sk": {"S": f"TASK#{timestamp}#{task_id}"}
+            },
+            UpdateExpression=update_expression,
+            ExpressionAttributeValues=expression_values,
+            ExpressionAttributeNames=expression_names
+        )
+        print(f"Estado en DB actualizado a {status} para {task_id}")
+    except Exception as e:
+        print(f"Error actualizando DynamoDB para {task_id}: {str(e)}")
 
 def cargar_artefactos():
     global _INTERPRETER, _SCALER, _FEATURE_COLUMNS, _FILL_VALUES
@@ -81,39 +117,24 @@ def predecir_score(features_dict: dict) -> float:
     
     return float(preds[0])
 
-def actualizar_estado(task_id: str, status: str, score: float = None, error: str = None):
-    table = dynamodb.Table(TABLE_NAME)
-    update_expr = "SET #st = :status"
-    expr_attrs = {"#st": "status"}
-    expr_vals = {":status": status}
-    
-    if score is not None:
-        update_expr += ", score = :score"
-        expr_vals[":score"] = Decimal(str(score))
-        
-    if error is not None:
-        update_expr += ", error_msg = :error"
-        expr_vals[":error"] = error
-        
-    table.update_item(
-        Key={'task_id': task_id},
-        UpdateExpression=update_expr,
-        ExpressionAttributeNames=expr_attrs,
-        ExpressionAttributeValues=expr_vals
-    )
-
 def lambda_handler(event, context):
     for record in event.get('Records', []):
+        task_id = None
+        cuit = None
+        fintech_id = None
+        timestamp = None
         try:
             body = json.loads(record['body'])
             task_id = body.get('task_id')
             cuit = body.get('cuit')
+            fintech_id = body.get('fintech_id')
+            timestamp = body.get('timestamp')
             
-            if not task_id or not cuit:
-                print("Mensaje inválido, ignorando.")
+            if not task_id or not cuit or not fintech_id or not timestamp:
+                print("Mensaje inválido, faltan campos requeridos, ignorando.")
                 continue
                 
-            print(f"Procesando Task: {task_id} - CUIT: {cuit}")
+            print(f"Procesando Task: {task_id} - CUIT: {cuit} - Fintech: {fintech_id}")
             
             bcra_data = consultar_bcra(cuit)
             
@@ -124,12 +145,11 @@ def lambda_handler(event, context):
             score = predecir_score(features)
             print(f"Score calculado: {score}")
             
-            actualizar_estado(task_id, "COMPLETED", score=score)
+            update_simulation_status(fintech_id, timestamp, task_id, "COMPLETED", score=score)
             
         except Exception as e:
-            print(f"Error procesando {task_id}: {str(e)}")
-            if 'task_id' in locals() and task_id:
-                actualizar_estado(task_id, "FAILED", error=str(e))
-            raise e
+            print(f"Error procesando: {str(e)}")
+            if task_id and fintech_id and timestamp:
+                update_simulation_status(fintech_id, timestamp, task_id, "FAILED", error=str(e))
             
     return {"statusCode": 200, "body": "OK"}
