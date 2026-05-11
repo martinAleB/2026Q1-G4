@@ -4,7 +4,8 @@ variable "bucket_name" {
 }
 
 resource "aws_s3_bucket" "frontend" {
-  bucket = var.bucket_name
+  bucket        = var.bucket_name
+  force_destroy = true
 }
 
 resource "aws_s3_bucket_versioning" "frontend" {

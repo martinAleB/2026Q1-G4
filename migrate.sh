@@ -3,33 +3,31 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# --- Build y push imagen Flyway ---
-echo "==> Build y push imagen Flyway"
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-ECR_URL="${ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/cloud-presti-flyway"
+# --- Build Lambda de migraciones ---
+echo "==> Instalando dependencias Node.js"
+cd "${SCRIPT_DIR}/db"
+npm install --omit=dev
+mkdir -p dist
 
-aws ecr get-login-password --region us-east-1 \
-  | docker login --username AWS --password-stdin "${ECR_URL}"
+# --- Crear ZIP ---
+echo "==> Creando ZIP"
+zip -r dist/migrations.zip . --exclude "dist/*" > /dev/null
 
-cd "${SCRIPT_DIR}"
-docker build -t "${ECR_URL}:latest" db/
-docker push "${ECR_URL}:latest"
-
-# --- Actualizar Lambda con la nueva imagen ---
+# --- Actualizar Lambda ---
 echo "==> Actualizando Lambda"
 aws lambda update-function-code \
-  --function-name cloud-presti-flyway \
-  --image-uri "${ECR_URL}:latest" \
+  --function-name cloud-presti-db-migrations \
+  --zip-file "fileb://${SCRIPT_DIR}/db/dist/migrations.zip" \
   --region us-east-1 > /dev/null
 
 aws lambda wait function-updated \
-  --function-name cloud-presti-flyway \
+  --function-name cloud-presti-db-migrations \
   --region us-east-1
 
 # --- Invocar Lambda ---
 echo "==> Corriendo migraciones"
 aws lambda invoke \
-  --function-name cloud-presti-flyway \
+  --function-name cloud-presti-db-migrations \
   --log-type Tail \
   --region us-east-1 \
   --cli-read-timeout 0 \
@@ -40,7 +38,7 @@ aws lambda invoke \
 echo ""
 cat /tmp/migrate-response.json
 
-if grep -q '"FunctionError"' /tmp/migrate-response.json; then
+if grep -q '"errorType"' /tmp/migrate-response.json; then
   echo "ERROR: Las migraciones fallaron."
   exit 1
 fi

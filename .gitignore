@@ -38,6 +38,10 @@ engine/data/*
 engine/data_processed/*
 !engine/data_processed/.gitkeep
 
+# Node (db migrations)
+db/node_modules/
+db/dist/
+
 # Node (frontend)
 frontend/node_modules/
 frontend/dist/
