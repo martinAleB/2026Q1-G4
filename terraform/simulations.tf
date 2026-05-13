@@ -1,4 +1,3 @@
-# DynamoDB Table para Simulaciones (Single Table Design)
 resource "aws_dynamodb_table" "simulations" {
   name           = "cloud-presti-simulations"
   billing_mode   = "PROVISIONED"
@@ -18,13 +17,11 @@ resource "aws_dynamodb_table" "simulations" {
   }
 }
 
-# SQS Queue
 resource "aws_sqs_queue" "simulations" {
   name                       = "cloud-presti-simulations-queue"
   visibility_timeout_seconds = 300 # 5 minutos para darle tiempo al worker ML
 }
 
-# Empaquetar Handler Lambda (Node.js)
 data "archive_file" "simulations_handler_zip" {
   type        = "zip"
   source_dir  = "${path.root}/../backend/simulations-handler"

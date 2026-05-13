@@ -4,12 +4,8 @@ import urllib.request
 import urllib.error
 from decimal import Decimal
 from pathlib import Path
-
-import pandas as pd
-import numpy as np
-import joblib
-import boto3
 import datetime
+import boto3
 
 try:
     import tflite_runtime.interpreter as tflite
@@ -17,25 +13,27 @@ except ImportError:
     import tensorflow.lite as tflite
 
 _INTERPRETER = None
-_SCALER = None
+_SCALER_PARAMS = None
 _FEATURE_COLUMNS = None
 _FILL_VALUES = None
 
 dynamodb = boto3.client('dynamodb')
 DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE_NAME')
 
-def _parse_monto_24dsf(valor: str) -> float:
+def _parse_monto_24dsf(valor) -> float:
     try:
         return float(str(valor).strip().replace(',', '.').replace(' ', ''))
     except (ValueError, TypeError):
         return 0.0
 
-def _parse_situacion_24dsf(valor: str) -> int | None:
-    sit = pd.to_numeric(valor, errors='coerce')
-    if pd.isna(sit):
+def _parse_situacion_24dsf(valor) -> int | None:
+    try:
+        if valor is None or str(valor).strip() == "":
+            return None
+        sit = int(float(str(valor).replace(',', '.')))
+        return sit if 1 <= sit <= 5 else None
+    except (ValueError, TypeError):
         return None
-    sit = int(sit)
-    return sit if 1 <= sit <= 5 else None
 
 def features_desde_api(response_json: dict) -> dict | None:
     periodos = response_json.get('periodos', [])
@@ -48,11 +46,12 @@ def features_desde_api(response_json: dict) -> dict | None:
         if not entidades:
             continue
 
-        situaciones = [
-            _parse_situacion_24dsf(e.get('situacion'))
-            for e in entidades
-        ]
-        situaciones_validas = [s for s in situaciones if s is not None]
+        situaciones_validas = []
+        for e in entidades:
+            sit = _parse_situacion_24dsf(e.get('situacion'))
+            if sit is not None:
+                situaciones_validas.append(sit)
+        
         if not situaciones_validas:
             continue
 
@@ -92,10 +91,11 @@ def features_desde_api(response_json: dict) -> dict | None:
 
     meses_en_sit1 = sum(1 for s in sits if s == 1)
     meses_sit_mala = sum(1 for s in sits if s >= 3)
-    peor_situacion_24m = max(sits) if sits else None
+    peor_situacion_24m = max(sits) if sits else 1
+    
     if len(sits) >= 4:
         bloque = sits[3:12]
-        tendencia = round((sum(sits[:3]) / 3) - (sum(bloque) / len(bloque)), 3)
+        tendencia = round((sum(sits[:3]) / 3) - (sum(bloque) / len(bloque)), 3) if bloque else 0.0
     else:
         tendencia = 0.0
 
@@ -133,38 +133,11 @@ def features_desde_api(response_json: dict) -> dict | None:
 
     return features
 
-def _read_feature_columns(path: Path) -> list[str]:
-    with path.open("r", encoding="utf-8") as f:
-        data = json.load(f)
-    return data
-
-def _read_fill_values(path: Path) -> dict[str, float]:
+def _read_json(path: Path):
     if not path.exists():
-        return {}
+        return None
     with path.open("r", encoding="utf-8") as f:
-        data = json.load(f)
-    out: dict[str, float] = {}
-    for k, v in data.items():
-        out[k] = float(v)
-    return out
-
-def _build_features(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series | None]:
-    ID_COLUMN = "nro_id"
-    TARGET_COLUMN = "score_crediticio"
-    CATEGORICAL_COLUMNS = ["actividad"]
-    
-    ids = df[ID_COLUMN] if ID_COLUMN in df.columns else None
-
-    X = df.copy()
-    for col in [ID_COLUMN, TARGET_COLUMN]:
-        if col in X.columns:
-            X = X.drop(columns=[col])
-
-    if "actividad" not in X.columns:
-        X["actividad"] = "desconocido"
-
-    X = pd.get_dummies(X, columns=CATEGORICAL_COLUMNS)
-    return X, ids
+        return json.load(f)
 
 def update_simulation_status(fintech_id: str, timestamp: str, task_id: str, status: str, score: float = None, error: str = None):
     if not DYNAMODB_TABLE:
@@ -202,18 +175,18 @@ def update_simulation_status(fintech_id: str, timestamp: str, task_id: str, stat
         print(f"Error actualizando DynamoDB para {task_id}: {str(e)}")
 
 def cargar_artefactos():
-    global _INTERPRETER, _SCALER, _FEATURE_COLUMNS, _FILL_VALUES
+    global _INTERPRETER, _SCALER_PARAMS, _FEATURE_COLUMNS, _FILL_VALUES
     if _INTERPRETER is not None:
         return
         
     print("Cargando artefactos en memoria (Cold Start)...")
     artifacts_dir = Path(__file__).resolve().parent / "artifacts"
     
-    _SCALER = joblib.load(artifacts_dir / "scaler.joblib")
+    _SCALER_PARAMS = _read_json(artifacts_dir / "scaler_params.json")
     _INTERPRETER = tflite.Interpreter(model_path=str(artifacts_dir / "modelo_crediticio.tflite"))
     _INTERPRETER.allocate_tensors()
-    _FEATURE_COLUMNS = _read_feature_columns(artifacts_dir / "feature_columns.json")
-    _FILL_VALUES = _read_fill_values(artifacts_dir / "feature_fill_values.json")
+    _FEATURE_COLUMNS = _read_json(artifacts_dir / "feature_columns.json")
+    _FILL_VALUES = _read_json(artifacts_dir / "feature_fill_values.json")
     print("Artefactos cargados.")
 
 def consultar_bcra(cuit: str) -> dict:
@@ -229,31 +202,69 @@ def consultar_bcra(cuit: str) -> dict:
         raise Exception(f"Error de conexión con BCRA: {str(e)}")
 
 def predecir_score(features_dict: dict) -> float:
+    import numpy as np
+    
     cargar_artefactos()
     
-    if 'nro_id' not in features_dict:
-        features_dict['nro_id'] = "temp_id"
-        
-    df = pd.DataFrame([features_dict])
+    input_data = []
+    for col in _FEATURE_COLUMNS:
+        if col.startswith("actividad_"):
+            val = 1.0 if f"actividad_{features_dict.get('actividad', 'desconocido')}" == col else 0.0
+        else:
+            val = float(features_dict.get(col, _FILL_VALUES.get(col, 0.0)))
+        input_data.append(val)
     
-    X, _ = _build_features(df)
-    X = X.reindex(columns=_FEATURE_COLUMNS, fill_value=0)
-    X = X.replace([np.inf, -np.inf], np.nan)
-    
-    if _FILL_VALUES:
-        X = X.fillna(pd.Series(_FILL_VALUES))
-    X = X.fillna(0.0)
-    
-    X_scaled = _SCALER.transform(X)
+    means = _SCALER_PARAMS['mean']
+    scales = _SCALER_PARAMS['scale']
+    scaled_data = [(v - m) / s for v, m, s in zip(input_data, means, scales)]
     
     input_details = _INTERPRETER.get_input_details()
     output_details = _INTERPRETER.get_output_details()
     
-    _INTERPRETER.set_tensor(input_details[0]['index'], X_scaled.astype(np.float32))
-    _INTERPRETER.invoke()
-    preds = _INTERPRETER.get_tensor(output_details[0]['index']).reshape(-1)
+    input_array = np.array([scaled_data], dtype=np.float32)
     
-    return float(preds[0])
+    _INTERPRETER.set_tensor(input_details[0]['index'], input_array)
+    _INTERPRETER.invoke()
+    preds = _INTERPRETER.get_tensor(output_details[0]['index'])
+    
+    return float(preds[0][0])
+
+def lambda_handler(event, context):
+    for record in event.get('Records', []):
+        task_id = None
+        cuit = None
+        fintech_id = None
+        timestamp = None
+        try:
+            body = json.loads(record['body'])
+            task_id = body.get('task_id')
+            cuit = body.get('cuit')
+            fintech_id = body.get('fintech_id')
+            timestamp = body.get('timestamp')
+            
+            if not task_id or not cuit or not fintech_id or not timestamp:
+                print("Mensaje inválido, faltan campos requeridos, ignorando.")
+                continue
+                
+            print(f"Procesando Task: {task_id} - CUIT: {cuit} - Fintech: {fintech_id}")
+            
+            bcra_data = consultar_bcra(cuit)
+            
+            features = features_desde_api(bcra_data)
+            if features is None:
+                raise ValueError("No hay suficientes periodos en BCRA (min 7).")
+                
+            score = predecir_score(features)
+            print(f"Score calculado: {score}")
+            
+            update_simulation_status(fintech_id, timestamp, task_id, "COMPLETED", score=score)
+            
+        except Exception as e:
+            print(f"Error procesando: {str(e)}")
+            if task_id and fintech_id and timestamp:
+                update_simulation_status(fintech_id, timestamp, task_id, "FAILED", error=str(e))
+            
+    return {"statusCode": 200, "body": "OK"}
 
 def lambda_handler(event, context):
     for record in event.get('Records', []):

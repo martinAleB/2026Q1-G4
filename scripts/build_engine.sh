@@ -30,7 +30,7 @@ cp -r backend/simulations/* "${BUILD_DIR}/"
 echo "Copiando artefactos del modelo..."
 mkdir -p "${BUILD_DIR}/artifacts"
 cp engine/artifacts/modelo_crediticio.tflite "${BUILD_DIR}/artifacts/"
-cp engine/artifacts/scaler.joblib "${BUILD_DIR}/artifacts/"
+cp engine/artifacts/scaler_params.json "${BUILD_DIR}/artifacts/"
 cp engine/artifacts/feature_columns.json "${BUILD_DIR}/artifacts/"
 cp engine/artifacts/feature_fill_values.json "${BUILD_DIR}/artifacts/"
 
