@@ -50,15 +50,17 @@ COGNITO_DOMAIN=$(terraform output -raw auth_cognito_domain)
 CLIENT_ID=$(terraform output -raw auth_client_id)
 API_GW_ENDPOINT=$(terraform output -raw auth_api_gateway_endpoint)
 BUCKET_NAME=$(terraform output -raw bucket_name)
+SIMULATIONS_API_ENDPOINT=$(terraform output -raw simulations_api_endpoint)
 
 # --- 6. Build frontend ---
 echo "==> Construyendo frontend"
 cd "${SCRIPT_DIR}/frontend"
 
-cat > .env.local << EOF
+cat > .env.production << EOF
 VITE_COGNITO_DOMAIN=https://${COGNITO_DOMAIN}.auth.us-east-1.amazoncognito.com
 VITE_COGNITO_CLIENT_ID=${CLIENT_ID}
 VITE_API_GATEWAY_CALLBACK_URL=${API_GW_ENDPOINT}/callback
+VITE_SIMULATIONS_API_URL=${SIMULATIONS_API_ENDPOINT}
 EOF
 
 npm ci

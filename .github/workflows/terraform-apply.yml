@@ -24,6 +24,7 @@ jobs:
       client_id: ${{ steps.tf_outputs.outputs.client_id }}
       api_gateway_endpoint: ${{ steps.tf_outputs.outputs.api_gateway_endpoint }}
       bucket_name: ${{ steps.tf_outputs.outputs.bucket_name }}
+      simulations_api_endpoint: ${{ steps.tf_outputs.outputs.simulations_api_endpoint }}
 
     steps:
       - name: Checkout
@@ -95,13 +96,14 @@ jobs:
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Create .env.local
+      - name: Create .env.production
         working-directory: frontend
         run: |
-          cat > .env.local << EOF
+          cat > .env.production << EOF
           VITE_COGNITO_DOMAIN=https://${{ needs.infrastructure.outputs.cognito_domain }}.auth.us-east-1.amazoncognito.com
           VITE_COGNITO_CLIENT_ID=${{ needs.infrastructure.outputs.client_id }}
           VITE_API_GATEWAY_CALLBACK_URL=${{ needs.infrastructure.outputs.api_gateway_endpoint }}/callback
+          VITE_SIMULATIONS_API_URL=${{ needs.infrastructure.outputs.simulations_api_endpoint }}
           EOF
 
       - name: Install dependencies
@@ -115,3 +117,6 @@ jobs:
       - name: Deploy to S3
         run: aws s3 sync dist/ s3://${{ needs.infrastructure.outputs.bucket_name }} --delete --acl public-read
         working-directory: frontend
+ectory: frontend
+end
+end

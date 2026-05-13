@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Search, RefreshCw, Clock, CheckCircle2, XCircle, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -14,15 +14,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-
-// Mock data — reemplazar con fetch real desde CLI
-const MOCK_QUERIES = [
-  { id: 1, cuit: '20123456789', fechaConsulta: '2025-05-13T14:32:00Z', score: 720, estado: 'completado' },
-  { id: 2, cuit: '27987654321', fechaConsulta: '2025-05-13T13:15:00Z', score: 480, estado: 'completado' },
-  { id: 3, cuit: '30711234567', fechaConsulta: '2025-05-13T11:48:00Z', score: null, estado: 'pendiente' },
-  { id: 4, cuit: '20345678901', fechaConsulta: '2025-05-12T09:20:00Z', score: 610, estado: 'completado' },
-  { id: 5, cuit: '27111222333', fechaConsulta: '2025-05-12T08:05:00Z', score: null, estado: 'error' },
-]
 
 function formatCuit(cuit) {
   if (!cuit || cuit.length !== 11) return cuit
@@ -56,15 +47,16 @@ function ScoreBadge({ score, estado }) {
       </span>
     )
   }
+  const multipliedScore = score !== null && score !== undefined ? score * 10 : 0;
   const color =
-    score >= 700 ? 'text-emerald-600 bg-emerald-50 border-emerald-200' :
-    score >= 500 ? 'text-amber-600 bg-amber-50 border-amber-200' :
+    multipliedScore >= 7 ? 'text-emerald-600 bg-emerald-50 border-emerald-200' :
+    multipliedScore >= 5 ? 'text-amber-600 bg-amber-50 border-amber-200' :
                   'text-red-600 bg-red-50 border-red-200'
 
   return (
     <span className={`inline-flex items-center gap-1.5 text-sm font-semibold px-2 py-0.5 rounded-md border ${color}`}>
       <CheckCircle2 className="size-3.5" />
-      {score}
+      {score !== null && score !== undefined ? multipliedScore.toFixed(2) : '-'}
     </span>
   )
 }
@@ -80,19 +72,32 @@ export default function SimulationsPage() {
   const [cuit, setCuit] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [queries, setQueries] = useState(MOCK_QUERIES)
+  const [queries, setQueries] = useState([])
   const [page, setPage] = useState(1)
   const PAGE_SIZE = 10
   const totalPages = Math.ceil(queries.length / PAGE_SIZE)
   const paginatedQueries = queries.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-  // Handlers — lógica real a implementar desde CLI
+  useEffect(() => {
+    handleRefresh()
+  }, [])
+
   const handleSimular = async () => {
-    if (!cuit.trim()) return
+    if (!cuit.trim() || cuit.length !== 11) return
     setIsLoading(true)
     try {
-      // TODO: POST /api/simulations { cuit, fintechId: "test" }
-      await new Promise(r => setTimeout(r, 800)) // placeholder
+      const response = await fetch(`${import.meta.env.VITE_SIMULATIONS_API_URL}/simulations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cuit: cuit, fintech_id: 'test' })
+      })
+      if (!response.ok) {
+        throw new Error('Error al iniciar la simulación')
+      }
+      setCuit('')
+      await handleRefresh()
+    } catch (error) {
+      console.error(error)
     } finally {
       setIsLoading(false)
     }
@@ -101,8 +106,32 @@ export default function SimulationsPage() {
   const handleRefresh = async () => {
     setIsRefreshing(true)
     try {
-      // TODO: GET /api/simulations?fintechId=test
-      await new Promise(r => setTimeout(r, 600)) // placeholder
+      const response = await fetch(`${import.meta.env.VITE_SIMULATIONS_API_URL}/simulations?fintech_id=test`)
+      if (!response.ok) {
+        throw new Error('Error al obtener los resultados')
+      }
+      const data = await response.json()
+      
+      if (data.results) {
+        const mappedQueries = data.results.map(q => {
+          let estado = 'pendiente'
+          if (q.status === 'COMPLETED') estado = 'completado'
+          else if (q.status === 'ERROR') estado = 'error'
+
+          return {
+            id: q.task_id,
+            cuit: q.cuit,
+            fechaConsulta: q.created_at,
+            score: q.score || null,
+            estado: estado
+          }
+        })
+        
+        mappedQueries.sort((a, b) => new Date(b.fechaConsulta) - new Date(a.fechaConsulta))
+        setQueries(mappedQueries)
+      }
+    } catch (error) {
+      console.error(error)
     } finally {
       setIsRefreshing(false)
     }

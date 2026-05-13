@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "./setup-env.sh",
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
