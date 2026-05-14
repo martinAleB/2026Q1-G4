@@ -12,32 +12,14 @@ BUILD_DIR="build_engine"
 rm -rf "${BUILD_DIR}"
 mkdir -p "${BUILD_DIR}"
 
-# 2. Instalar dependencias compiladas nativamente para Amazon Linux (manylinux)
-echo "Instalando LiteRT (manylinux_2_27_x86_64)..."
-python3 -m pip install \
-    --platform manylinux_2_27_x86_64 \
+# 2. Instalar dependencias para Amazon Linux (manylinux) usando uv
+echo "Instalando dependencias (manylinux_2_27_x86_64)..."
+uv pip install \
+    --python-platform x86_64-manylinux_2_28 \
     --target "${BUILD_DIR}" \
-    --implementation cp \
     --python-version 3.12 \
     --only-binary=:all: \
-    --upgrade \
-    ai-edge-litert
-
-echo "Instalando Numpy (manylinux2014_x86_64)..."
-python3 -m pip install \
-    --platform manylinux2014_x86_64 \
-    --target "${BUILD_DIR}" \
-    --implementation cp \
-    --python-version 3.12 \
-    --only-binary=:all: \
-    --upgrade \
-    "numpy<2.0.0"
-
-echo "Instalando dependencias generales..."
-python3 -m pip install \
-    --target "${BUILD_DIR}" \
-    --upgrade \
-    requests
+    -r "${ROOT_DIR}/backend/simulations/engine/requirements.txt"
 
 # 3. Copiar el código de la Lambda y los artefactos
 echo "Copiando código fuente y modelo..."

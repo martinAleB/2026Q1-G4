@@ -199,29 +199,20 @@ resource "aws_db_proxy_target" "main" {
   db_instance_identifier = module.rds.db_instance_identifier
 }
 
-module "auth" {
-  source = "./modules/auth"
-
-  project_name = "cloud-presti"
-  region       = "us-east-1"
-  frontend_url = "http://${aws_s3_bucket_website_configuration.frontend.website_endpoint}"
-}
-
-# Output (@TODO ver si hay que moverlo o hacer otra cosa)
 output "auth_user_pool_id" {
-  value = module.auth.user_pool_id
+  value = aws_cognito_user_pool.main.id
 }
 
 output "auth_client_id" {
-  value = module.auth.client_id
+  value = aws_cognito_user_pool_client.main.id
 }
 
 output "auth_cognito_domain" {
-  value = module.auth.cognito_domain
+  value = aws_cognito_user_pool_domain.main.domain
 }
 
 output "auth_api_gateway_endpoint" {
-  value = module.auth.api_gateway_endpoint
+  value = aws_apigatewayv2_api.simulations_api.api_endpoint
 }
 
 output "rds_proxy_endpoint" {

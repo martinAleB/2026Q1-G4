@@ -9,6 +9,9 @@ if [ -z "$TF_STATE_BUCKET" ] || [ -z "$TF_LOCK_TABLE" ]; then
   echo "Faltan variables de entorno:"
   echo "  export TF_STATE_BUCKET=<nombre-del-bucket>"
   echo "  export TF_LOCK_TABLE=<nombre-de-la-tabla>"
+  exit 1
+fi
+
 # --- 1. Empaquetar motor ML (Lambdas Python) ---
 echo "==> Generando paquete de la Lambda de Simulaciones"
 bash "${SCRIPT_DIR}/scripts/build_engine.sh"
@@ -36,6 +39,14 @@ echo "==> Instalando dependencias de base de datos"
 cd "${SCRIPT_DIR}/db"
 npm install --omit=dev
 mkdir -p dist
+
+echo "==> Instalando dependencias de producto"
+cd "${SCRIPT_DIR}/backend/producto"
+npm install --omit=dev
+
+echo "==> Instalando dependencias de fintech"
+cd "${SCRIPT_DIR}/backend/fintech"
+npm install --omit=dev
 
 # --- 4. Terraform init + apply ---
 echo "==> Terraform init"

@@ -2,12 +2,13 @@ exports.up = (pgm) => {
   pgm.sql(`
     CREATE TABLE fintech (
       sub          VARCHAR PRIMARY KEY,
-      nombre       VARCHAR NOT NULL UNIQUE,
-      max_sit_bcra INTEGER NOT NULL
+      nombre       VARCHAR UNIQUE,
+      max_sit_bcra INTEGER
     );
 
     CREATE TABLE producto (
-      sub          VARCHAR PRIMARY KEY,
+      id           SERIAL PRIMARY KEY,
+      sub          VARCHAR NOT NULL,
       nombre       VARCHAR NOT NULL,
       monto        DOUBLE PRECISION NOT NULL,
       cuotas       INTEGER NOT NULL,

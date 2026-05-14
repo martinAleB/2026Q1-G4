@@ -44,7 +44,6 @@ exports.handler = async (event) => {
         }
 
         const tokens = await response.json();
-        
         const redirectUrl = `${frontendUrl}#access_token=${tokens.access_token}&id_token=${tokens.id_token}`;
 
         return {
