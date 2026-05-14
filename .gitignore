@@ -72,3 +72,11 @@ simulations_engine.zip
 # Backend (Node & Python)
 backend/**/node_modules/
 backend/**/__pycache__/
+
+# Terraform
+**/terraform.tfvars
+**/.terraform/
+**/.terraform.lock.hcl
+**/terraform.tfstate
+**/terraform.tfstate.backup
+
