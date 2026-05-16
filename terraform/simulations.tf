@@ -75,6 +75,14 @@ resource "aws_lambda_function" "simulations_engine" {
   timeout          = 60
   memory_size      = 1024
 
+  vpc_config {
+    subnet_ids = [
+      module.vpc.subnet_ids["10.0.2.0/24"],
+      module.vpc.subnet_ids["10.0.5.0/24"],
+    ]
+    security_group_ids = [module.vpc.security_group_ids["lambda-sg"]]
+  }
+
   environment {
     variables = {
       DYNAMODB_TABLE_NAME = aws_dynamodb_table.simulations.name

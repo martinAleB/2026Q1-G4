@@ -13,6 +13,7 @@ module "vpc" {
       name              = "public-az-a"
       cidr_block        = "10.0.1.0/24"
       availability_zone = "us-east-1a"
+      nat_gateway       = true
     },
     {
       name              = "private-az-a-1"
@@ -24,6 +25,7 @@ module "vpc" {
       name              = "public-az-b"
       cidr_block        = "10.0.4.0/24"
       availability_zone = "us-east-1b"
+      nat_gateway       = true
     },
     {
       name              = "private-az-b-1"
@@ -52,12 +54,18 @@ module "vpc" {
     {
       name    = "private-rt-az-a"
       subnets = ["private-az-a-1"]
-      routes  = []
+      routes = [{
+        cidr_block = "0.0.0.0/0"
+        target     = "nat"
+      }]
     },
     {
       name    = "private-rt-az-b"
       subnets = ["private-az-b-1"]
-      routes  = []
+      routes = [{
+        cidr_block = "0.0.0.0/0"
+        target     = "nat"
+      }]
     },
   ]
 
