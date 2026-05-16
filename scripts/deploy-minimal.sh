@@ -26,12 +26,7 @@ TF_INIT_ARGS=(
 
 # --- 2. Preparar Código de Lambdas ---
 echo "==> Generando paquete de la Lambda de Simulaciones"
-bash "${SCRIPT_DIR}/scripts/build_engine.sh"
-
-echo "==> Instalando dependencias de Node.js para lambdas de base de datos"
-cd "${SCRIPT_DIR}/db"
-npm install --omit=dev
-mkdir -p dist
+bash "${SCRIPT_DIR}/scripts/build-engine.sh"
 
 # --- 3. Terraform init + apply (TARGENTEADO) ---
 echo "==> Inicializando Terraform"
@@ -42,9 +37,9 @@ echo "==> Ejecutando Terraform Apply (Targeted)"
 terraform apply -auto-approve \
   -target=aws_dynamodb_table.simulations \
   -target=aws_sqs_queue.simulations \
-  -target=aws_lambda_function.simulations_handler \
-  -target=aws_lambda_function.simulations_engine \
-  -target=aws_lambda_function.simulations_results \
+  "-target=aws_lambda_function.lambdas[\"simulations-handler\"]" \
+  "-target=aws_lambda_function.lambdas[\"simulations-engine\"]" \
+  "-target=aws_lambda_function.lambdas[\"simulations-results\"]" \
   -target=aws_apigatewayv2_api.simulations_api \
   -target=aws_apigatewayv2_route.post_simulations \
   -target=aws_apigatewayv2_route.get_simulations \

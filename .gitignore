@@ -30,6 +30,7 @@ engine/.env.*
 engine/.python-version
 
 # Engine outputs
+backend/simulations/engine-dist/
 engine/artifacts/*
 !engine/artifacts/.gitkeep
 engine/src/model/artifacts/

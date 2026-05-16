@@ -14,7 +14,7 @@ fi
 
 # --- 1. Empaquetar motor ML (Lambdas Python) ---
 echo "==> Generando paquete de la Lambda de Simulaciones"
-bash "${SCRIPT_DIR}/scripts/build_engine.sh"
+bash "${SCRIPT_DIR}/scripts/build-engine.sh"
 
 # --- 2. Validar variables de entorno ---
 if [ -z "$TF_STATE_BUCKET" ] || [ -z "$TF_LOCK_TABLE" ] || [ -z "$TF_FRONTEND_BUCKET_NAME" ]; then
@@ -35,29 +35,8 @@ TF_INIT_ARGS=(
 )
 
 # --- 3. Instalar dependencias de Lambdas ---
-echo "==> Instalando dependencias de producto (por endpoint)"
-cd "${SCRIPT_DIR}/backend/product-get"
-npm install --omit=dev
-cd "${SCRIPT_DIR}/backend/product-create"
-npm install --omit=dev
-cd "${SCRIPT_DIR}/backend/product-update"
-npm install --omit=dev
-cd "${SCRIPT_DIR}/backend/product-delete"
-npm install --omit=dev
-
-echo "==> Instalando dependencias de fintech (por endpoint)"
-cd "${SCRIPT_DIR}/backend/fintech-post-confirmation"
-npm install --omit=dev
-cd "${SCRIPT_DIR}/backend/fintech-get"
-npm install --omit=dev
-
-echo "==> Instalando dependencias de simulations handler"
-cd "${SCRIPT_DIR}/backend/simulations/handler"
-npm install --omit=dev
-
-echo "==> Instalando dependencias de simulations results"
-cd "${SCRIPT_DIR}/backend/simulations/results"
-npm install --omit=dev
+echo "==> Instalando dependencias de todas las lambdas Node.js"
+bash "${SCRIPT_DIR}/scripts/install-lambdas.sh"
 
 # --- 4. Terraform init + apply ---
 echo "==> Terraform init"

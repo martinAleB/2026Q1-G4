@@ -13,7 +13,7 @@ resource "aws_cognito_user_pool" "main" {
   }
 
   lambda_config {
-    post_confirmation = aws_lambda_function.fintech_post_confirmation.arn
+    post_confirmation = aws_lambda_function.lambdas["fintech-post-confirmation"].arn
   }
 }
 
@@ -37,19 +37,15 @@ resource "aws_cognito_user_pool_client" "main" {
   supported_identity_providers = ["COGNITO"]
 }
 
-data "archive_file" "auth_lambda_zip" {
-  type        = "zip"
-  source_dir  = "${path.root}/../backend/auth"
-  output_path = "${path.root}/.terraform/tmp/user-auth-lambda.zip"
-}
-
 resource "aws_lambda_function" "auth_callback" {
-  filename         = data.archive_file.auth_lambda_zip.output_path
+  filename         = data.archive_file.lambdas["auth-callback"].output_path
   function_name    = "cloud-presti-auth-callback"
   role             = data.aws_iam_role.lab_role.arn
   handler          = "index.handler"
-  source_code_hash = data.archive_file.auth_lambda_zip.output_base64sha256
+  source_code_hash = data.archive_file.lambdas["auth-callback"].output_base64sha256
   runtime          = "nodejs20.x"
+  timeout          = 30
+  memory_size      = 256
 
   environment {
     variables = {
@@ -78,10 +74,3 @@ resource "aws_apigatewayv2_route" "callback" {
   target    = "integrations/${aws_apigatewayv2_integration.auth_callback.id}"
 }
 
-resource "aws_lambda_permission" "api_gw_auth" {
-  statement_id  = "AllowExecutionFromAPIGatewayAuth"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.auth_callback.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*"
-}

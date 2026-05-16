@@ -45,18 +45,8 @@ jobs:
             -backend-config="dynamodb_table=${{ vars.TF_LOCK_TABLE }}"
 
       - name: Install Lambda dependencies
-        working-directory: db
-        run: |
-          npm install --omit=dev
-          mkdir -p dist
-
-      - name: Install Lambda dependencies (producto)
-        working-directory: backend/producto
-        run: npm install --omit=dev
-
-      - name: Install Lambda dependencies (fintech)
-        working-directory: backend/fintech
-        run: npm install --omit=dev
+        working-directory: .
+        run: bash scripts/install-lambdas.sh
 
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
@@ -80,6 +70,7 @@ jobs:
           echo "client_id=$(terraform output -raw auth_client_id)" >> $GITHUB_OUTPUT
           echo "api_gateway_endpoint=$(terraform output -raw auth_api_gateway_endpoint)" >> $GITHUB_OUTPUT
           echo "bucket_name=$(terraform output -raw bucket_name)" >> $GITHUB_OUTPUT
+          echo "simulations_api_endpoint=$(terraform output -raw simulations_api_endpoint)" >> $GITHUB_OUTPUT
 
   frontend:
     name: Frontend
@@ -125,6 +116,3 @@ jobs:
       - name: Deploy to S3
         run: aws s3 sync dist/ s3://${{ needs.infrastructure.outputs.bucket_name }} --delete --acl public-read
         working-directory: frontend
-ectory: frontend
-end
-end
