@@ -18,11 +18,7 @@ if [ "$CONFIRM" != "destroy" ]; then
   exit 1
 fi
 
-# --- 2. Limpiar Bucket de Frontend (S3 no borra buckets con archivos) ---
-echo "==> Vaciando bucket de frontend: ${TF_FRONTEND_BUCKET_NAME}"
-aws s3 rm "s3://${TF_FRONTEND_BUCKET_NAME}" --recursive || echo "El bucket no existe o ya está vacío."
-
-# --- 3. Terraform destroy ---
+# --- 2. Terraform destroy ---
 TF_INIT_ARGS=(
   -backend-config="bucket=${TF_STATE_BUCKET}"
   -backend-config="key=terraform.tfstate"
@@ -37,7 +33,7 @@ terraform init -reconfigure "${TF_INIT_ARGS[@]}"
 echo "==> Ejecutando Terraform DESTROY"
 terraform destroy -auto-approve -var="bucket_name=${TF_FRONTEND_BUCKET_NAME}"
 
-# --- 4. Limpieza de archivos locales ---
+# --- 3. Limpieza de archivos locales ---
 echo "==> Limpiando archivos temporales locales"
 cd "${SCRIPT_DIR}"
 rm -f simulations_engine.zip

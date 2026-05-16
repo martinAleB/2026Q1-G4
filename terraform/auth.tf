@@ -18,7 +18,7 @@ resource "aws_cognito_user_pool" "main" {
 }
 
 resource "aws_cognito_user_pool_domain" "main" {
-  domain       = "cloud-presti-auth-domain-2"
+  domain       = "cloud-presti-auth-domain"
   user_pool_id = aws_cognito_user_pool.main.id
 }
 

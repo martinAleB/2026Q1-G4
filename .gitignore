@@ -67,7 +67,8 @@ frontend/.env.*
 frontend/AGENTS.md
 
 # ZIPs created
-simulations_engine.zip
+*.zip
+**/*.zip
 
 # Backend (Node & Python)
 backend/**/node_modules/
