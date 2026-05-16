@@ -55,10 +55,10 @@ La infraestructura vive en `terraform/` y se despliega sobre AWS con Terraform >
 
 ### Recursos actuales
 
-| Recurso | Descripción |
-|---|---|
-| `aws_s3_bucket` | Hosting estático del frontend |
-| VPC module | VPC con subnets públicas/privadas, NAT Gateways, Internet Gateway y Security Groups |
+| Recurso         | Descripción                                                                         |
+| --------------- | ----------------------------------------------------------------------------------- |
+| `aws_s3_bucket` | Hosting estático del frontend                                                       |
+| VPC module      | VPC con subnets públicas/privadas, NAT Gateways, Internet Gateway y Security Groups |
 
 ### Getting started (local)
 
@@ -114,10 +114,10 @@ El workflow `.github/workflows/terraform.yml` automatiza el despliegue de infrae
 
 ### Comportamiento
 
-| Evento | Acción |
-|---|---|
-| Push a `main` (cambios en `terraform/` o `frontend/`) | Build frontend → `terraform plan` → `terraform apply` |
-| PR a `main` (cambios en `terraform/` o `frontend/`) | Build frontend → `terraform plan` (solo muestra cambios, no aplica) |
+| Evento                                                | Acción                                                              |
+| ----------------------------------------------------- | ------------------------------------------------------------------- |
+| Push a `main` (cambios en `terraform/` o `frontend/`) | Build frontend → `terraform plan` → `terraform apply`               |
+| PR a `main` (cambios en `terraform/` o `frontend/`)   | Build frontend → `terraform plan` (solo muestra cambios, no aplica) |
 
 ### Cómo correr el pipeline desde cero
 
@@ -143,17 +143,17 @@ En tu repositorio: **Settings → Secrets and variables → Actions**
 
 **Secrets** (pestaña "Secrets") — se renuevan con cada sesión del lab:
 
-| Secret | Dónde conseguirlo |
-|---|---|
-| `AWS_ACCESS_KEY_ID` | AWS Academy → Start Lab → "AWS Details" → "AWS CLI" |
-| `AWS_SECRET_ACCESS_KEY` | ídem |
-| `AWS_SESSION_TOKEN` | ídem |
+| Secret                  | Dónde conseguirlo                                   |
+| ----------------------- | --------------------------------------------------- |
+| `AWS_ACCESS_KEY_ID`     | AWS Academy → Start Lab → "AWS Details" → "AWS CLI" |
+| `AWS_SECRET_ACCESS_KEY` | ídem                                                |
+| `AWS_SESSION_TOKEN`     | ídem                                                |
 
 **Variables** (pestaña "Variables") — se configuran una sola vez:
 
-| Variable | Valor |
-|---|---|
-| `TF_STATE_BUCKET` | El nombre del bucket que creaste en el paso 1 |
+| Variable                  | Valor                                                                                                                |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `TF_STATE_BUCKET`         | El nombre del bucket que creaste en el paso 1                                                                        |
 | `TF_FRONTEND_BUCKET_NAME` | Nombre del bucket donde se va a hostear el frontend (también debe ser único, ej: `cloud-presti-frontend-tuapellido`) |
 
 #### 3. Triggerear el pipeline
