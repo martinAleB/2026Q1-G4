@@ -1,81 +1,54 @@
-# --- Triggers y permisos específicos por lambda ---
-
-resource "aws_lambda_permission" "api_gw_fintech_get" {
-  statement_id  = "AllowExecutionFromAPIGatewayFintechGet"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.lambdas["fintech-get"].function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*"
+data "archive_file" "lambdas" {
+  for_each    = local.lambda_sources
+  type        = "zip"
+  source_dir  = each.value
+  output_path = "${path.root}/.terraform/archives/${each.key}.zip"
 }
 
-resource "aws_lambda_permission" "api_gw_product_get" {
-  statement_id  = "AllowExecutionFromAPIGatewayProductGet"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.lambdas["product-get"].function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*"
+locals {
+  lambda_event_sources_flat = {
+    for entry in flatten([
+      for lambda_key, sources in local.lambda_event_sources : [
+        for i, source in sources : {
+          key              = "${lambda_key}-${i}"
+          lambda_key       = lambda_key
+          event_source_arn = source.event_source_arn
+          batch_size       = source.batch_size
+        }
+      ]
+    ]) : entry.key => entry
+  }
+
+  lambda_permissions_flat = {
+    for entry in flatten([
+      for lambda_key, perms in local.lambda_permissions : [
+        for i, perm in perms : {
+          key        = "${lambda_key}-${i}"
+          lambda_key = lambda_key
+          principal  = perm.principal
+          source_arn = perm.source_arn
+        }
+      ]
+    ]) : entry.key => entry
+  }
 }
 
-resource "aws_lambda_permission" "api_gw_product_create" {
-  statement_id  = "AllowExecutionFromAPIGatewayProductCreate"
+# --- Permisos de lambdas ---
+
+resource "aws_lambda_permission" "permissions" {
+  for_each      = local.lambda_permissions_flat
+  statement_id  = "Allow-${each.key}"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.lambdas["product-create"].function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*"
+  function_name = each.value.lambda_key == "auth-callback" ? aws_lambda_function.auth_callback.function_name : aws_lambda_function.lambdas[each.value.lambda_key].function_name
+  principal     = each.value.principal
+  source_arn    = each.value.source_arn
 }
 
-resource "aws_lambda_permission" "api_gw_product_update" {
-  statement_id  = "AllowExecutionFromAPIGatewayProductUpdate"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.lambdas["product-update"].function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*"
-}
-
-resource "aws_lambda_permission" "api_gw_product_delete" {
-  statement_id  = "AllowExecutionFromAPIGatewayProductDelete"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.lambdas["product-delete"].function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*"
-}
-
-resource "aws_lambda_permission" "api_gw_handler" {
-  statement_id  = "AllowExecutionFromAPIGateway"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.lambdas["simulations-handler"].function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*"
-}
-
-resource "aws_lambda_permission" "api_gw_results" {
-  statement_id  = "AllowExecutionFromAPIGatewayResults"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.lambdas["simulations-results"].function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*"
-}
-
-resource "aws_lambda_permission" "api_gw_auth" {
-  statement_id  = "AllowExecutionFromAPIGatewayAuth"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.auth_callback.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*"
-}
-
-resource "aws_lambda_permission" "cognito_fintech" {
-  statement_id  = "AllowExecutionFromCognito"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.lambdas["fintech-post-confirmation"].function_name
-  principal     = "cognito-idp.amazonaws.com"
-  source_arn    = aws_cognito_user_pool.main.arn
-}
-
-resource "aws_lambda_event_source_mapping" "sqs_to_engine" {
-  event_source_arn = aws_sqs_queue.simulations.arn
-  function_name    = aws_lambda_function.lambdas["simulations-engine"].arn
-  batch_size       = 1
+resource "aws_lambda_event_source_mapping" "mappings" {
+  for_each         = local.lambda_event_sources_flat
+  event_source_arn = each.value.event_source_arn
+  function_name    = aws_lambda_function.lambdas[each.value.lambda_key].arn
+  batch_size       = each.value.batch_size
 }
 
 # --- Lambda functions ---

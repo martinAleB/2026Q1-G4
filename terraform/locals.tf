@@ -106,6 +106,42 @@ locals {
     }
   }
 
+  lambda_permissions = {
+    "auth-callback" = [
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
+    ]
+    "fintech-get" = [
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
+    ]
+    "fintech-post-confirmation" = [
+      { principal = "cognito-idp.amazonaws.com", source_arn = aws_cognito_user_pool.main.arn }
+    ]
+    "product-get" = [
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
+    ]
+    "product-create" = [
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
+    ]
+    "product-update" = [
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
+    ]
+    "product-delete" = [
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
+    ]
+    "simulations-handler" = [
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
+    ]
+    "simulations-results" = [
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
+    ]
+  }
+
+  lambda_event_sources = {
+    "simulations-engine" = [
+      { event_source_arn = aws_sqs_queue.simulations.arn, batch_size = 1 }
+    ]
+  }
+
   api_integrations = {
     "auth-callback"       = aws_lambda_function.auth_callback.invoke_arn
     "fintech-get"         = aws_lambda_function.lambdas["fintech-get"].invoke_arn
@@ -127,11 +163,4 @@ locals {
     "simulations-post" = { route_key = "POST /simulations",     integration = "simulations-handler", auth = true  }
     "simulations-get"  = { route_key = "GET /simulations",      integration = "simulations-results", auth = true  }
   }
-}
-
-data "archive_file" "lambdas" {
-  for_each    = local.lambda_sources
-  type        = "zip"
-  source_dir  = each.value
-  output_path = "${path.root}/.terraform/archives/${each.key}.zip"
 }

@@ -4,11 +4,9 @@ variable "region" {
 }
 
 variable "state_bucket_name" {
-  type    = string
-  default = "cloud-presti-tf-state"
+  type = string
 }
 
 variable "lock_table_name" {
-  type    = string
-  default = "cloud-presti-tf-lock"
+  type = string
 }

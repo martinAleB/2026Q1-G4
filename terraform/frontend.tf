@@ -67,11 +67,11 @@ resource "terraform_data" "build_frontend" {
     client_id      = aws_cognito_user_pool_client.main.id
     api_endpoint   = aws_apigatewayv2_api.simulations_api.api_endpoint
     bucket_name    = aws_s3_bucket.frontend.id
-    script_hash    = filemd5("${path.module}/build-frontend.sh")
+    script_hash    = filemd5("${path.module}/../scripts/build-frontend.sh")
   }
 
   provisioner "local-exec" {
-    command     = "${path.module}/build-frontend.sh '${self.triggers_replace.cognito_domain}' '${self.triggers_replace.client_id}' '${self.triggers_replace.api_endpoint}' '${self.triggers_replace.api_endpoint}' '${path.module}/../frontend' '${self.triggers_replace.bucket_name}'"
+    command     = "${path.module}/../scripts/build-frontend.sh '${self.triggers_replace.cognito_domain}' '${self.triggers_replace.client_id}' '${self.triggers_replace.api_endpoint}' '${self.triggers_replace.api_endpoint}' '${path.module}/../frontend' '${self.triggers_replace.bucket_name}'"
     working_dir = path.module
   }
 

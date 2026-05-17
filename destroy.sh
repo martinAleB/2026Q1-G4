@@ -2,47 +2,33 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TF_DIR="${SCRIPT_DIR}/terraform"
 
 # --- 1. Validar variables de entorno ---
-if [ -z "$TF_STATE_BUCKET" ] || [ -z "$TF_LOCK_TABLE" ]; then
-  echo "Faltan variables de entorno para identificar el estado remoto:"
+if [ -z "$TF_STATE_BUCKET" ] || [ -z "$TF_LOCK_TABLE" ] || [ -z "$TF_FRONTEND_BUCKET_NAME" ]; then
+  echo "Faltan variables de entorno indispensables:"
   echo "  export TF_STATE_BUCKET=<nombre-del-bucket-estado>"
   echo "  export TF_LOCK_TABLE=<nombre-de-la-tabla-lock>"
+  echo "  export TF_FRONTEND_BUCKET_NAME=<nombre-del-bucket-frontend>"
   exit 1
 fi
 
+# --- 2. Confirmación manual ---
 read -p "Escribí 'destroy' para confirmar la destrucción TOTAL de la infraestructura: " CONFIRM
 if [ "$CONFIRM" != "destroy" ]; then
   echo "Cancelado."
   exit 1
 fi
 
-# --- 2. Terraform destroy ---
-TF_INIT_ARGS=(
-  -backend-config="bucket=${TF_STATE_BUCKET}"
-  -backend-config="key=terraform.tfstate"
-  -backend-config="region=us-east-1"
-  -backend-config="dynamodb_table=${TF_LOCK_TABLE}"
-)
+bash "${SCRIPT_DIR}/scripts/terraform-init.sh"
+bash "${SCRIPT_DIR}/scripts/terraform-destroy.sh"
 
-echo "==> Inicializando Terraform"
-cd "${TF_DIR}"
-terraform init -reconfigure "${TF_INIT_ARGS[@]}"
-
-echo "==> Ejecutando Terraform DESTROY"
-terraform destroy -auto-approve -var="bucket_name=${TF_FRONTEND_BUCKET_NAME}"
-
-# --- 3. Limpieza de archivos locales ---
+# --- 3. Limpieza local ---
 echo "==> Limpiando archivos temporales locales"
-cd "${SCRIPT_DIR}"
-rm -f simulations_engine.zip
-rm -rf db/dist
-rm -rf frontend/dist
+rm -rf "${SCRIPT_DIR}/frontend/dist"
 
 echo ""
 echo "======================================================================"
 echo "¡Infraestructura destruida con éxito!"
 echo "Nota: El bucket de estado y la tabla de lock permanecen intactos."
-echo "Para borrarlos, ve a terraform/bootstrap y corre terraform destroy."
+echo "Para borrarlos, ejecutá: scripts/destroy-bootstrap.sh"
 echo "======================================================================"
