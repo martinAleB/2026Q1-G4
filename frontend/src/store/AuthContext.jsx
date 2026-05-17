@@ -25,6 +25,35 @@ function getStoredUser() {
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(getStoredUser)
   const [isReady, setIsReady] = useState(false)
+  const [fintechData, setFintechData] = useState(null)
+  const [isLoadingFintech, setIsLoadingFintech] = useState(false)
+
+  const fetchFintech = async (tokens) => {
+    if (MOCK) {
+      setFintechData({ fintech_name: 'Mock Fintech' })
+      return
+    }
+
+    const { idToken } = tokens || JSON.parse(window.localStorage.getItem(TOKENS_STORAGE_KEY) || '{}')
+    if (!idToken) return
+
+    setIsLoadingFintech(true)
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_GATEWAY_CALLBACK_URL.replace('/callback', '')}/fintech`, {
+        headers: {
+          Authorization: `Bearer ${idToken}`
+        }
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setFintechData(data)
+      }
+    } catch (err) {
+      console.error('Error fetching fintech:', err)
+    } finally {
+      setIsLoadingFintech(false)
+    }
+  }
 
   useEffect(() => {
     const hash = window.location.hash
@@ -47,11 +76,15 @@ export function AuthProvider({ children }) {
           window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(payload))
           window.localStorage.setItem(TOKENS_STORAGE_KEY, JSON.stringify({ accessToken, idToken }))
 
+          fetchFintech({ accessToken, idToken })
+
           window.location.replace('/dashboard')
         } catch (err) {
           console.error('Error decodificando el token:', err)
         }
       }
+    } else if (user && !fintechData && !isLoadingFintech) {
+      fetchFintech()
     }
     setIsReady(true)
   }, [])
@@ -59,6 +92,7 @@ export function AuthProvider({ children }) {
   const login = () => {
     if (MOCK) {
       setUser(MOCK_USER)
+      setFintechData({ fintech_name: 'Mock Fintech' })
       return
     }
 
@@ -75,8 +109,29 @@ export function AuthProvider({ children }) {
     window.location.href = loginUrl
   }
 
+  const signup = () => {
+    if (MOCK) {
+      setUser(MOCK_USER)
+      setFintechData({ fintech_name: 'Mock Fintech' })
+      return
+    }
+
+    const cognitoDomain = import.meta.env.VITE_COGNITO_DOMAIN
+    const clientId = import.meta.env.VITE_COGNITO_CLIENT_ID
+    const redirectUri = import.meta.env.VITE_API_GATEWAY_CALLBACK_URL
+
+    if (!cognitoDomain || !clientId || !redirectUri) {
+        console.error("Faltan variables de entorno para Cognito")
+        return
+    }
+
+    const signupUrl = `${cognitoDomain}/signup?client_id=${clientId}&response_type=code&scope=email+openid+profile&redirect_uri=${encodeURIComponent(redirectUri)}`
+    window.location.href = signupUrl
+  }
+
   const logout = () => {
     setUser(null)
+    setFintechData(null)
     window.localStorage.removeItem(AUTH_STORAGE_KEY)
     window.localStorage.removeItem(TOKENS_STORAGE_KEY)
     window.location.href = '/'
@@ -85,11 +140,16 @@ export function AuthProvider({ children }) {
   const contextValue = useMemo(
     () => ({
       user,
+      fintechData,
+      isLoadingFintech,
       isAuthenticated: Boolean(user),
+      needsOnboarding: Boolean(user && !isLoadingFintech && !fintechData?.fintech_name),
       login,
+      signup,
       logout,
+      refreshFintech: fetchFintech
     }),
-    [user],
+    [user, fintechData, isLoadingFintech],
   )
 
   if (!isReady) return null;

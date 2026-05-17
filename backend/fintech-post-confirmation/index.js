@@ -9,7 +9,15 @@ const TABLE = process.env.DYNAMODB_FINTECH_TABLE;
 exports.handler = async (event) => {
   if (event.triggerSource !== 'PostConfirmation_ConfirmSignUp') return event;
 
-  const sub = event.request.userAttributes.sub;
-  await ddb.send(new PutCommand({ TableName: TABLE, Item: { sub } }));
+  const { sub, email } = event.request.userAttributes;
+
+  await ddb.send(new PutCommand({ 
+    TableName: TABLE, 
+    Item: { 
+      sub,
+      email
+    } 
+  }));
+
   return event;
 };

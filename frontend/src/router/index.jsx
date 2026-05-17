@@ -5,10 +5,12 @@ import { Navigate, createHashRouter } from 'react-router-dom'
 
 import { DashboardLayout } from '@/components/shared/DashboardLayout'
 import { ProtectedRoute } from '@/components/shared/ProtectedRoute'
+import { useAuth } from '@/store/AuthContext'
 
 const LandingPage = lazy(() => import('@/pages/LandingPage'))
 const LoginPage = lazy(() => import('@/pages/LoginPage'))
 const CreateAccountPage = lazy(() => import('@/pages/CreateAccountPage'))
+const OnboardingPage = lazy(() => import('@/pages/OnboardingPage'))
 const ProductsPage = lazy(() => import('@/pages/dashboard/ProductsPage'))
 const ParametersPage = lazy(() => import('@/pages/dashboard/ParametersPage'))
 const PortfolioPage = lazy(() => import('@/pages/dashboard/PortfolioPage'))
@@ -31,6 +33,24 @@ function withSuspense(LazyComponent) {
   )
 }
 
+function OnboardingRoute({ children }) {
+  const { isAuthenticated, needsOnboarding, isLoadingFintech } = useAuth()
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+
+  if (isLoadingFintech) {
+    return <PageLoader />
+  }
+
+  if (!needsOnboarding) {
+    return <Navigate to="/dashboard" replace />
+  }
+
+  return children
+}
+
 export const router = createHashRouter([
   {
     path: '/',
@@ -43,6 +63,10 @@ export const router = createHashRouter([
   {
     path: '/create-account',
     element: withSuspense(CreateAccountPage),
+  },
+  {
+    path: '/onboarding',
+    element: <OnboardingRoute>{withSuspense(OnboardingPage)}</OnboardingRoute>,
   },
   {
     path: '/register',

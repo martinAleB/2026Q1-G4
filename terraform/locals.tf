@@ -2,6 +2,7 @@ locals {
   lambda_sources = {
     "fintech-post-confirmation" = "${path.root}/../backend/fintech-post-confirmation"
     "fintech-get"               = "${path.root}/../backend/fintech-get"
+    "fintech-update"            = "${path.root}/../backend/fintech-update"
     "auth-callback"             = "${path.root}/../backend/auth"
     "product-get"               = "${path.root}/../backend/product-get"
     "product-create"            = "${path.root}/../backend/product-create"
@@ -24,6 +25,16 @@ locals {
       }
     }
     "fintech-get" = {
+      handler     = "index.handler"
+      runtime     = "nodejs20.x"
+      timeout     = 30
+      memory_size = 256
+      in_vpc      = true
+      env_vars = {
+        DYNAMODB_FINTECH_TABLE = module.dynamodb_fintech.dynamodb_table_id
+      }
+    }
+    "fintech-update" = {
       handler     = "index.handler"
       runtime     = "nodejs20.x"
       timeout     = 30
@@ -114,6 +125,9 @@ locals {
     "fintech-get" = [
       { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
     ]
+    "fintech-update" = [
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
+    ]
     "fintech-post-confirmation" = [
       { principal = "cognito-idp.amazonaws.com", source_arn = aws_cognito_user_pool.main.arn }
     ]
@@ -146,6 +160,7 @@ locals {
   api_integrations = {
     "auth-callback"       = aws_lambda_function.auth_callback.invoke_arn
     "fintech-get"         = aws_lambda_function.lambdas["fintech-get"].invoke_arn
+    "fintech-update"      = aws_lambda_function.lambdas["fintech-update"].invoke_arn
     "product-get"         = aws_lambda_function.lambdas["product-get"].invoke_arn
     "product-create"      = aws_lambda_function.lambdas["product-create"].invoke_arn
     "product-update"      = aws_lambda_function.lambdas["product-update"].invoke_arn
@@ -157,6 +172,7 @@ locals {
   api_routes = {
     "callback"         = { route_key = "GET /callback",         integration = "auth-callback",       auth = false }
     "fintech-get"      = { route_key = "GET /fintech",          integration = "fintech-get",         auth = true  }
+    "fintech-put"      = { route_key = "PUT /fintech",          integration = "fintech-update",      auth = true  }
     "producto-get"     = { route_key = "GET /producto",         integration = "product-get",         auth = true  }
     "producto-post"    = { route_key = "POST /producto",        integration = "product-create",      auth = true  }
     "producto-put"     = { route_key = "PUT /producto/{id}",    integration = "product-update",      auth = true  }

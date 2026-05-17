@@ -1,41 +1,17 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { AlertCircle, ArrowLeft } from 'lucide-react'
+import { useEffect } from 'react'
+import { Link } from 'react-router-dom'
+import { ArrowLeft, Loader2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { useAuth } from '@/store/AuthContext'
 
 export default function CreateAccountPage() {
-  const navigate = useNavigate()
-  const { login } = useAuth()
-  const [companyName, setCompanyName] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [error, setError] = useState('')
+  const { signup } = useAuth()
 
-  const handleSubmit = (event) => {
-    event.preventDefault()
-
-    if (password.length < 8) {
-      setError('La contrasena debe tener al menos 8 caracteres.')
-      return
-    }
-
-    if (password !== confirmPassword) {
-      setError('Las contrasenas no coinciden.')
-      return
-    }
-
-    login({
-      name: companyName,
-      email,
-    })
-
-    navigate('/dashboard/products')
-  }
+  useEffect(() => {
+    // Redirigir automáticamente a Cognito al cargar la página
+    signup()
+  }, [signup])
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -53,83 +29,15 @@ export default function CreateAccountPage() {
         </div>
       </header>
 
-      <main className="flex flex-1 items-center justify-center px-4 py-12">
-        <div className="w-full max-w-md space-y-8">
-          <div className="space-y-2 text-center">
-            <h1 className="text-3xl font-bold tracking-tight md:text-4xl">Crea tu cuenta</h1>
-            <p className="text-muted-foreground">
-              Registra tu fintech y accede al dashboard de productos, parametros y cartera.
-            </p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {error ? (
-              <div className="flex items-start gap-2 rounded-2xl border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-                <AlertCircle className="mt-0.5 size-4 shrink-0" />
-                <span>{error}</span>
-              </div>
-            ) : null}
-
-            <div className="space-y-2">
-              <Label htmlFor="company-name">Nombre de la empresa</Label>
-              <Input
-                id="company-name"
-                type="text"
-                placeholder="Tu Fintech SA"
-                value={companyName}
-                onChange={(event) => setCompanyName(event.target.value)}
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="email">Email corporativo</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="equipo@fintech.com"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="password">Contrasena</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="********"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="confirm-password">Confirmar contrasena</Label>
-              <Input
-                id="confirm-password"
-                type="password"
-                placeholder="********"
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                required
-              />
-            </div>
-
-            <Button type="submit" className="w-full" size="lg">
-              Crear cuenta
-            </Button>
-          </form>
-
-          <p className="text-center text-sm text-muted-foreground">
-            Ya tienes una cuenta?{' '}
-            <Link to="/login" className="font-medium text-foreground hover:underline">
-              Ingresar
-            </Link>
-          </p>
-        </div>
+      <main className="flex flex-1 flex-col items-center justify-center px-4 py-12 text-center">
+        <Loader2 className="mb-4 size-8 animate-spin text-primary" />
+        <h1 className="text-2xl font-semibold">Redirigiendo al registro seguro...</h1>
+        <p className="mt-2 text-muted-foreground">
+          Estamos preparándolo todo para que crees tu cuenta en presti.
+        </p>
+        <Button onClick={signup} variant="outline" className="mt-6">
+          Si no eres redirigido, haz clic aquí
+        </Button>
       </main>
     </div>
   )
