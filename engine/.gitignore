@@ -35,9 +35,6 @@ data/*
 data_processed/*
 !data_processed/.gitkeep
 
-# Model artifacts
-artifacts/*
-!artifacts/.gitkeep
 src/model/artifacts/
 
 # Agents
