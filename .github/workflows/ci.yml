@@ -32,16 +32,30 @@ jobs:
         run: terraform validate
         working-directory: terraform
 
-      - name: Bootstrap Init
+  terraform-bootstrap:
+    name: Terraform Bootstrap
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9"
+          terraform_wrapper: false
+
+      - name: Terraform Init
         run: terraform init -backend=false
         working-directory: terraform-bootstrap
 
-      - name: Bootstrap Format Check
+      - name: Terraform Format Check
         run: terraform fmt -check -recursive
         working-directory: terraform-bootstrap
         continue-on-error: true
 
-      - name: Bootstrap Validate
+      - name: Terraform Validate
         run: terraform validate
         working-directory: terraform-bootstrap
 
