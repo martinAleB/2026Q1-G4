@@ -41,6 +41,3 @@ jobs:
 
       - name: Terraform Destroy
         run: bash scripts/terraform-destroy.sh
-
-      - name: Destroy Bootstrap
-        run: bash scripts/destroy-bootstrap.sh
