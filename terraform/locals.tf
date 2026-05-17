@@ -81,7 +81,7 @@ locals {
       in_vpc      = true
       env_vars = {
         SQS_QUEUE_URL       = aws_sqs_queue.simulations.url
-        DYNAMODB_TABLE_NAME = aws_dynamodb_table.simulations.name
+        DYNAMODB_TABLE_NAME = module.dynamodb_simulations.dynamodb_table_id
       }
     }
     "simulations-results" = {
@@ -91,7 +91,7 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DYNAMODB_TABLE_NAME = aws_dynamodb_table.simulations.name
+        DYNAMODB_TABLE_NAME = module.dynamodb_simulations.dynamodb_table_id
       }
     }
     "simulations-engine" = {
@@ -101,7 +101,7 @@ locals {
       memory_size = 1024
       in_vpc      = true
       env_vars = {
-        DYNAMODB_TABLE_NAME = aws_dynamodb_table.simulations.name
+        DYNAMODB_TABLE_NAME = module.dynamodb_simulations.dynamodb_table_id
       }
     }
   }
