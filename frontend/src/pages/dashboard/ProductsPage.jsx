@@ -23,8 +23,8 @@ const MOCK = import.meta.env.VITE_MOCK === 'true'
 const TOKENS_KEY = 'cloud-dashboard-tokens'
 
 const MOCK_PRODUCTS = [
-  { producto_id: 'mock-1', sub: 'mock-sub-123', nombre: 'Préstamo Personal Plus', monto: 500000, cuotas: 24, interes: 45, min_sit_cred: 1, max_sit_cred: 2 },
-  { producto_id: 'mock-2', sub: 'mock-sub-123', nombre: 'Microcrédito Express',   monto:  80000, cuotas:  6, interes: 65, min_sit_cred: 1, max_sit_cred: 3 },
+  { producto_id: 'mock-1', sub: 'mock-sub-123', nombre: 'Préstamo Personal Plus', monto: 500000, cuotas: 24, interes: 45, min_score: 4.5, max_score: 8.5 },
+  { producto_id: 'mock-2', sub: 'mock-sub-123', nombre: 'Microcrédito Express',   monto:  80000, cuotas:  6, interes: 65, min_score: 2.0, max_score: 5.5 },
 ]
 
 function authHeaders() {
@@ -36,7 +36,7 @@ function authHeaders() {
 }
 
 const EMPTY_FORM = {
-  nombre: '', monto: '', cuotas: '', interes: '', min_sit_cred: '', max_sit_cred: '',
+  nombre: '', monto: '', cuotas: '', interes: '', min_score: '', max_score: '',
 }
 
 const FIELDS = [
@@ -44,8 +44,8 @@ const FIELDS = [
   { key: 'monto',        label: 'Monto (ARS)',                   type: 'number', placeholder: 'Ej: 500000' },
   { key: 'cuotas',       label: 'Cuotas (meses)',                type: 'number', placeholder: 'Ej: 24' },
   { key: 'interes',      label: 'Tasa de interés anual (%)',      type: 'number', placeholder: 'Ej: 45' },
-  { key: 'min_sit_cred', label: 'Situación crediticia mínima',   type: 'number', placeholder: '1 – 6' },
-  { key: 'max_sit_cred', label: 'Situación crediticia máxima',   type: 'number', placeholder: '1 – 6' },
+  { key: 'min_score', label: 'Scoring mínimo permitido',      type: 'number', placeholder: '0.00 – 10.00', step: '0.01' },
+  { key: 'max_score', label: 'Scoring máximo permitido',      type: 'number', placeholder: '0.00 – 10.00', step: '0.01' },
 ]
 
 function formatARS(n) {
@@ -63,8 +63,8 @@ function ProductForm({ open, onOpenChange, initial, onSubmit, isSaving }) {
         monto:        String(initial.monto),
         cuotas:       String(initial.cuotas),
         interes:      String(initial.interes),
-        min_sit_cred: String(initial.min_sit_cred),
-        max_sit_cred: String(initial.max_sit_cred),
+        min_score: String(initial.min_score),
+        max_score: String(initial.max_score),
       } : EMPTY_FORM)
       setErrors({})
     }
@@ -75,11 +75,11 @@ function ProductForm({ open, onOpenChange, initial, onSubmit, isSaving }) {
     FIELDS.forEach(({ key }) => {
       if (!form[key].toString().trim()) e[key] = 'Requerido'
     })
-    const min = parseInt(form.min_sit_cred)
-    const max = parseInt(form.max_sit_cred)
-    if (!e.min_sit_cred && (min < 1 || min > 6)) e.min_sit_cred = 'Debe ser entre 1 y 6'
-    if (!e.max_sit_cred && (max < 1 || max > 6)) e.max_sit_cred = 'Debe ser entre 1 y 6'
-    if (!e.min_sit_cred && !e.max_sit_cred && min > max) e.max_sit_cred = 'Debe ser ≥ al mínimo'
+    const min = parseFloat(form.min_score)
+    const max = parseFloat(form.max_score)
+    if (!e.min_score && (isNaN(min) || min < 0 || min > 10)) e.min_score = 'Debe ser entre 0 y 10'
+    if (!e.max_score && (isNaN(max) || max < 0 || max > 10)) e.max_score = 'Debe ser entre 0 y 10'
+    if (!e.min_score && !e.max_score && min > max) e.max_score = 'Debe ser ≥ al mínimo'
     return e
   }
 
@@ -97,8 +97,8 @@ function ProductForm({ open, onOpenChange, initial, onSubmit, isSaving }) {
       monto:        parseFloat(form.monto),
       cuotas:       parseInt(form.cuotas),
       interes:      parseFloat(form.interes),
-      min_sit_cred: parseInt(form.min_sit_cred),
-      max_sit_cred: parseInt(form.max_sit_cred),
+      min_score: parseFloat(form.min_score),
+      max_score: parseFloat(form.max_score),
     })
   }
 
@@ -118,7 +118,7 @@ function ProductForm({ open, onOpenChange, initial, onSubmit, isSaving }) {
           {/* Condiciones financieras */}
           <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
-              {FIELDS.slice(0, 4).map(({ key, label, type, placeholder, colSpan }) => (
+              {FIELDS.slice(0, 4).map(({ key, label, type, placeholder, colSpan, step }) => (
                 <div key={key} className={`space-y-1.5 ${colSpan === 2 ? 'md:col-span-2' : ''}`}>
                   <Label htmlFor={key}>{label}</Label>
                   <Input
@@ -129,6 +129,7 @@ function ProductForm({ open, onOpenChange, initial, onSubmit, isSaving }) {
                     onChange={e => handleChange(key, e.target.value)}
                     aria-invalid={Boolean(errors[key])}
                     min={type === 'number' ? 0 : undefined}
+                    step={step}
                     className="bg-muted/50 focus:bg-background transition-colors"
                   />
                   {errors[key] && (
@@ -142,7 +143,7 @@ function ProductForm({ open, onOpenChange, initial, onSubmit, isSaving }) {
           {/* Requisitos de elegibilidad */}
           <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
-              {FIELDS.slice(4).map(({ key, label, type, placeholder, colSpan }) => (
+              {FIELDS.slice(4).map(({ key, label, type, placeholder, colSpan, step }) => (
                 <div key={key} className={`space-y-1.5 ${colSpan === 2 ? 'md:col-span-2' : ''}`}>
                   <Label htmlFor={key}>{label}</Label>
                   <Input
@@ -153,6 +154,7 @@ function ProductForm({ open, onOpenChange, initial, onSubmit, isSaving }) {
                     onChange={e => handleChange(key, e.target.value)}
                     aria-invalid={Boolean(errors[key])}
                     min={type === 'number' ? 0 : undefined}
+                    step={step}
                     className="bg-muted/50 focus:bg-background transition-colors"
                   />
                   {errors[key] && (
@@ -161,6 +163,9 @@ function ProductForm({ open, onOpenChange, initial, onSubmit, isSaving }) {
                 </div>
               ))}
             </div>
+            <p className="text-sm text-muted-foreground">
+              Estás configurando el intervalo de nuestro scoring personal generado por el modelo (0 a 10).
+            </p>
           </div>
 
           <DialogFooter className="pt-2">
@@ -221,7 +226,7 @@ function ProductCard({ product, onEdit, onDelete }) {
           </div>
         </div>
         <div className="rounded-xl bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-          Sit. crediticia admitida: <span className="font-semibold text-foreground">{product.min_sit_cred} – {product.max_sit_cred}</span>
+          Scoring admitido: <span className="font-semibold text-foreground">{product.min_score} – {product.max_score}</span>
         </div>
       </CardContent>
     </Card>

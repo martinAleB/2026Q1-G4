@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 
 import { createElement, lazy, Suspense } from 'react'
-import { Navigate, createBrowserRouter } from 'react-router-dom'
+import { Navigate, createHashRouter } from 'react-router-dom'
 
 import { DashboardLayout } from '@/components/shared/DashboardLayout'
 import { ProtectedRoute } from '@/components/shared/ProtectedRoute'
@@ -31,7 +31,7 @@ function withSuspense(LazyComponent) {
   )
 }
 
-export const router = createBrowserRouter([
+export const router = createHashRouter([
   {
     path: '/',
     element: withSuspense(LandingPage),
