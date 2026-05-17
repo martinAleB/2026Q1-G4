@@ -80,9 +80,9 @@ resource "terraform_data" "build_frontend" {
     aws_cognito_user_pool_client.main,
     aws_apigatewayv2_api.simulations_api,
     aws_apigatewayv2_stage.simulations_stage,
-    aws_apigatewayv2_route.callback,
-    aws_apigatewayv2_route.post_simulations,
-    aws_apigatewayv2_route.get_simulations,
+    aws_apigatewayv2_route.routes["callback"],
+    aws_apigatewayv2_route.routes["simulations-post"],
+    aws_apigatewayv2_route.routes["simulations-get"],
     aws_s3_bucket.frontend
   ]
 }

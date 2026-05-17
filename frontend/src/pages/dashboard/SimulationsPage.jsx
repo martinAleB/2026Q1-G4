@@ -1,6 +1,16 @@
 import { useState, useEffect } from 'react'
 import { Search, RefreshCw, Clock, CheckCircle2, XCircle, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
 
+const TOKENS_KEY = 'cloud-dashboard-tokens'
+
+function authHeaders() {
+  try {
+    const tokens = JSON.parse(localStorage.getItem(TOKENS_KEY) || 'null')
+    if (tokens?.idToken) return { Authorization: `Bearer ${tokens.idToken}` }
+  } catch { /* */ }
+  return {}
+}
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -88,7 +98,7 @@ export default function SimulationsPage() {
     try {
       const response = await fetch(`${import.meta.env.VITE_SIMULATIONS_API_URL}/simulations`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ cuit: cuit, fintech_id: 'test' })
       })
       if (!response.ok) {
@@ -106,7 +116,9 @@ export default function SimulationsPage() {
   const handleRefresh = async () => {
     setIsRefreshing(true)
     try {
-      const response = await fetch(`${import.meta.env.VITE_SIMULATIONS_API_URL}/simulations?fintech_id=test`)
+      const response = await fetch(`${import.meta.env.VITE_SIMULATIONS_API_URL}/simulations?fintech_id=test`, {
+        headers: authHeaders()
+      })
       if (!response.ok) {
         throw new Error('Error al obtener los resultados')
       }

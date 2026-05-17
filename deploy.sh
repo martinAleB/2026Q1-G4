@@ -4,19 +4,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TF_DIR="${SCRIPT_DIR}/terraform"
 
-# --- Argumentos del backend ---
-if [ -z "$TF_STATE_BUCKET" ] || [ -z "$TF_LOCK_TABLE" ]; then
-  echo "Faltan variables de entorno:"
-  echo "  export TF_STATE_BUCKET=<nombre-del-bucket>"
-  echo "  export TF_LOCK_TABLE=<nombre-de-la-tabla>"
-  exit 1
-fi
-
-# --- 1. Empaquetar motor ML (Lambdas Python) ---
-echo "==> Generando paquete de la Lambda de Simulaciones"
-bash "${SCRIPT_DIR}/scripts/build-engine.sh"
-
-# --- 2. Validar variables de entorno ---
+# --- 1. Validar variables de entorno ---
 if [ -z "$TF_STATE_BUCKET" ] || [ -z "$TF_LOCK_TABLE" ] || [ -z "$TF_FRONTEND_BUCKET_NAME" ]; then
   echo "Faltan variables de entorno indispensables:"
   echo "  export TF_STATE_BUCKET=<nombre-del-bucket-estado>"
@@ -34,11 +22,11 @@ TF_INIT_ARGS=(
   -backend-config="dynamodb_table=${TF_LOCK_TABLE}"
 )
 
-# --- 3. Instalar dependencias de Lambdas ---
+# --- 2. Instalar dependencias de Lambdas ---
 echo "==> Instalando dependencias de todas las lambdas Node.js"
 bash "${SCRIPT_DIR}/scripts/install-lambdas.sh"
 
-# --- 4. Terraform init + apply ---
+# --- 3. Terraform init + apply ---
 echo "==> Terraform init"
 cd "${TF_DIR}"
 terraform init -reconfigure "${TF_INIT_ARGS[@]}"
@@ -46,7 +34,7 @@ terraform init -reconfigure "${TF_INIT_ARGS[@]}"
 echo "==> Terraform apply"
 terraform apply -auto-approve
 
-# --- 5. Leer outputs de Terraform ---
+# --- 4. Leer outputs de Terraform ---
 BUCKET_NAME=$(terraform output -raw bucket_name)
 
 echo ""
