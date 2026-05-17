@@ -38,6 +38,9 @@ jobs:
       - name: Bootstrap
         run: bash scripts/bootstrap.sh
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
       - name: Install Lambda dependencies
         run: bash scripts/install-lambdas.sh
 
