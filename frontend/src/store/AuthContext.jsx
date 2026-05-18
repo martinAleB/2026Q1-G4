@@ -34,8 +34,14 @@ export function AuthProvider({ children }) {
       return
     }
 
-    const { idToken } = tokens || JSON.parse(window.localStorage.getItem(TOKENS_STORAGE_KEY) || '{}')
-    if (!idToken) return
+    const storedTokens = JSON.parse(window.localStorage.getItem(TOKENS_STORAGE_KEY) || '{}')
+    const idToken = tokens?.idToken || storedTokens.idToken
+    
+    if (!idToken) {
+      console.warn('No idToken found for fetching fintech data')
+      setFintechData({}) 
+      return
+    }
 
     setIsLoadingFintech(true)
     try {
@@ -46,15 +52,21 @@ export function AuthProvider({ children }) {
       })
       if (response.ok) {
         const data = await response.json()
-        setFintechData(data)
+        setFintechData(data || {})
+      } else if (response.status === 404) {
+        setFintechData({}) // No tiene fintech aún
+      } else {
+        setFintechData({ error: true }) // Marcar error para evitar reintentos infinitos
       }
     } catch (err) {
       console.error('Error fetching fintech:', err)
+      setFintechData({ error: true })
     } finally {
       setIsLoadingFintech(false)
     }
   }
 
+  // Effect 1: Process tokens from hash
   useEffect(() => {
     const hash = window.location.hash
     if (hash && hash.includes('access_token=') && hash.includes('id_token=')) {
@@ -76,18 +88,24 @@ export function AuthProvider({ children }) {
           window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(payload))
           window.localStorage.setItem(TOKENS_STORAGE_KEY, JSON.stringify({ accessToken, idToken }))
 
+          // Limpiar el hash de tokens y redirigir al dashboard
+          window.location.hash = '/dashboard'
+          
           fetchFintech({ accessToken, idToken })
-
-          window.location.replace('/dashboard')
         } catch (err) {
           console.error('Error decodificando el token:', err)
         }
       }
-    } else if (user && !fintechData && !isLoadingFintech) {
-      fetchFintech()
     }
     setIsReady(true)
   }, [])
+
+  // Effect 2: Fetch fintech if user is logged in but no data
+  useEffect(() => {
+    if (user && !fintechData && !isLoadingFintech) {
+      fetchFintech()
+    }
+  }, [user, fintechData, isLoadingFintech])
 
   const login = () => {
     if (MOCK) {
@@ -143,7 +161,7 @@ export function AuthProvider({ children }) {
       fintechData,
       isLoadingFintech,
       isAuthenticated: Boolean(user),
-      needsOnboarding: Boolean(user && !isLoadingFintech && !fintechData?.fintech_name),
+      needsOnboarding: Boolean(user && fintechData !== null && !isLoadingFintech && !fintechData?.fintech_name),
       login,
       signup,
       logout,
