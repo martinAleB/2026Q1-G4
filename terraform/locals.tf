@@ -113,8 +113,9 @@ locals {
       memory_size = 1024
       in_vpc      = true
       env_vars = {
-        DYNAMODB_TABLE_NAME = module.dynamodb_simulations.dynamodb_table_id
-        SQS_QUEUE_URL       = aws_sqs_queue.simulations.url
+        DYNAMODB_TABLE_NAME    = module.dynamodb_simulations.dynamodb_table_id
+        DYNAMODB_FINTECH_TABLE = module.dynamodb_fintech.dynamodb_table_id
+        SQS_QUEUE_URL          = aws_sqs_queue.simulations.url
       }
     }
   }

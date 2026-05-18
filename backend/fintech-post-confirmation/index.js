@@ -11,12 +11,18 @@ exports.handler = async (event) => {
 
   const { sub, email } = event.request.userAttributes;
 
-  await ddb.send(new PutCommand({ 
-    TableName: TABLE, 
-    Item: { 
+  await ddb.send(new PutCommand({
+    TableName: TABLE,
+    Item: {
       sub,
-      email
-    } 
+      email,
+      max_situacion_crediticia: 2,
+      max_entidades_con_deuda: 3,
+      max_deuda_total_ars: 350000,
+      min_meses_situacion_1: 6,
+      max_dias_atraso: 30,
+      permite_proceso_judicial: false,
+    },
   }));
 
   return event;

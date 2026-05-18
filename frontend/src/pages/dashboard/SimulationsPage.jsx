@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, RefreshCw, Clock, CheckCircle2, XCircle, Loader2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Search, RefreshCw, Clock, CheckCircle2, XCircle, Loader2, ChevronLeft, ChevronRight, Ban } from 'lucide-react'
 
 const TOKENS_KEY = 'cloud-dashboard-tokens'
 
@@ -43,7 +43,7 @@ function formatDate(isoString) {
 function ScoreBadge({ score, estado }) {
   if (estado === 'pendiente') {
     return (
-      <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+      <span className="inline-flex items-center gap-1.5 text-sm text-yellow-600">
         <Clock className="size-3.5" />
         Pendiente
       </span>
@@ -54,6 +54,13 @@ function ScoreBadge({ score, estado }) {
       <span className="inline-flex items-center gap-1.5 text-sm text-destructive">
         <XCircle className="size-3.5" />
         Error
+      </span>
+    )
+  }
+  if (estado === 'rechazado') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+        -
       </span>
     )
   }
@@ -73,8 +80,9 @@ function ScoreBadge({ score, estado }) {
 
 function EstadoBadge({ estado }) {
   if (estado === 'completado') return <Badge variant="outline" className="text-emerald-600 border-emerald-200 bg-emerald-50">Completado</Badge>
-  if (estado === 'pendiente') return <Badge variant="outline" className="text-amber-600 border-amber-200 bg-amber-50">Pendiente</Badge>
+  if (estado === 'pendiente') return <Badge variant="outline" className="text-yellow-600 border-yellow-200 bg-yellow-50">Pendiente</Badge>
   if (estado === 'error') return <Badge variant="outline" className="text-red-600 border-red-200 bg-red-50">Error</Badge>
+  if (estado === 'rechazado') return <Badge variant="outline" className="text-orange-600 border-orange-200 bg-orange-50"><Ban className="size-3" />Rechazado</Badge>
   return <Badge variant="outline">{estado}</Badge>
 }
 
@@ -129,6 +137,7 @@ export default function SimulationsPage() {
           let estado = 'pendiente'
           if (q.status === 'COMPLETED') estado = 'completado'
           else if (q.status === 'FAILED') estado = 'error'
+          else if (q.status === 'REJECTED') estado = 'rechazado'
 
           return {
             id: q.task_id,

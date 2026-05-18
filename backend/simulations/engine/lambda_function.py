@@ -26,10 +26,20 @@ _FILL_VALUES = None
 
 dynamodb = boto3.client('dynamodb')
 sqs = boto3.client('sqs')
-DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE_NAME')
-SQS_QUEUE_URL  = os.environ.get('SQS_QUEUE_URL')
+DYNAMODB_TABLE         = os.environ.get('DYNAMODB_TABLE_NAME')
+DYNAMODB_FINTECH_TABLE = os.environ.get('DYNAMODB_FINTECH_TABLE')
+SQS_QUEUE_URL          = os.environ.get('SQS_QUEUE_URL')
 
 RETRY_DELAYS = [60, 120, 240, 480]
+
+FINTECH_DEFAULTS = {
+    'max_situacion_crediticia': 2,
+    'max_entidades_con_deuda':  3,
+    'max_deuda_total_ars':      350000,
+    'min_meses_situacion_1':    6,
+    'max_dias_atraso':          30,
+    'permite_proceso_judicial': False,
+}
 
 class NoRetryError(Exception):
     pass
@@ -153,7 +163,70 @@ def _read_json(path: Path):
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
 
-def update_simulation_status(sub: str, cuit: str, task_id: str, status: str, score: float = None, error: str = None):
+def get_fintech_params(sub: str) -> dict:
+    """Lee los parámetros generales de la fintech de DynamoDB. Si falta algún campo, usa defaults."""
+    if not DYNAMODB_FINTECH_TABLE:
+        print("DYNAMODB_FINTECH_TABLE no definida, usando defaults.")
+        return dict(FINTECH_DEFAULTS)
+
+    try:
+        response = dynamodb.get_item(
+            TableName=DYNAMODB_FINTECH_TABLE,
+            Key={"sub": {"S": sub}},
+        )
+        item = response.get('Item', {})
+    except Exception as e:
+        print(f"Error leyendo fintech params para {sub}: {str(e)}. Usando defaults.")
+        return dict(FINTECH_DEFAULTS)
+
+    params = dict(FINTECH_DEFAULTS)
+    if 'max_situacion_crediticia' in item:
+        params['max_situacion_crediticia'] = int(item['max_situacion_crediticia']['N'])
+    if 'max_entidades_con_deuda' in item:
+        params['max_entidades_con_deuda'] = int(item['max_entidades_con_deuda']['N'])
+    if 'max_deuda_total_ars' in item:
+        params['max_deuda_total_ars'] = float(item['max_deuda_total_ars']['N'])
+    if 'min_meses_situacion_1' in item:
+        params['min_meses_situacion_1'] = int(item['min_meses_situacion_1']['N'])
+    if 'max_dias_atraso' in item:
+        params['max_dias_atraso'] = int(item['max_dias_atraso']['N'])
+    if 'permite_proceso_judicial' in item:
+        params['permite_proceso_judicial'] = bool(item['permite_proceso_judicial'].get('BOOL', False))
+    return params
+
+def apply_filter(features: dict, params: dict) -> list:
+    """Aplica los umbrales generales de la fintech sobre las features del BCRA.
+    Retorna lista de razones de rechazo (vacía si pasa todas las reglas)."""
+    reasons = []
+
+    sit = int(features.get('situacion', 0))
+    if sit > params['max_situacion_crediticia']:
+        reasons.append(f"situacion_actual={sit} > max_situacion_crediticia={params['max_situacion_crediticia']}")
+
+    cant_ent = int(features.get('cant_entidades', 0))
+    if cant_ent > params['max_entidades_con_deuda']:
+        reasons.append(f"cant_entidades={cant_ent} > max_entidades_con_deuda={params['max_entidades_con_deuda']}")
+
+    # `prestamos_total` viene del BCRA 24DSF en miles de pesos -> pasamos a pesos
+    deuda_total_ars = float(features.get('prestamos_total', 0)) * 1000
+    if deuda_total_ars > params['max_deuda_total_ars']:
+        reasons.append(f"deuda_total_ars={deuda_total_ars:.0f} > max_deuda_total_ars={params['max_deuda_total_ars']}")
+
+    meses_sit1 = int(features.get('meses_en_sit1', 0))
+    if meses_sit1 < params['min_meses_situacion_1']:
+        reasons.append(f"meses_en_sit1={meses_sit1} < min_meses_situacion_1={params['min_meses_situacion_1']}")
+
+    dias_atraso = int(features.get('dias_atraso_max', 0))
+    if dias_atraso > params['max_dias_atraso']:
+        reasons.append(f"dias_atraso={dias_atraso} > max_dias_atraso={params['max_dias_atraso']}")
+
+    proceso_jud = int(features.get('proceso_judicial', 0)) == 1
+    if proceso_jud and not params['permite_proceso_judicial']:
+        reasons.append("proceso_judicial=True y permite_proceso_judicial=False")
+
+    return reasons
+
+def update_simulation_status(sub: str, cuit: str, task_id: str, status: str, score: float = None, error: str = None, rejection_reasons: list = None):
     if not DYNAMODB_TABLE:
         print("DYNAMODB_TABLE_NAME no definida, omitiendo guardado.")
         return
@@ -173,6 +246,10 @@ def update_simulation_status(sub: str, cuit: str, task_id: str, status: str, sco
         if error is not None:
             update_expression += ", error_message = :error"
             expression_values[":error"] = {"S": str(error)}
+
+        if rejection_reasons is not None:
+            update_expression += ", rejection_reasons = :reasons"
+            expression_values[":reasons"] = {"L": [{"S": r} for r in rejection_reasons]}
 
         dynamodb.update_item(
             TableName=DYNAMODB_TABLE,
@@ -280,6 +357,13 @@ def lambda_handler(event, context):
             features = features_desde_api(bcra_data)
             if features is None:
                 raise NoRetryError("No hay suficientes periodos en BCRA (min 7).")
+
+            fintech_params = get_fintech_params(sub)
+            rejection_reasons = apply_filter(features, fintech_params)
+            if rejection_reasons:
+                print(f"Cliente rechazado por política de fintech: {rejection_reasons}")
+                update_simulation_status(sub, cuit, task_id, "REJECTED", rejection_reasons=rejection_reasons)
+                continue
 
             score = predecir_score(features)
             print(f"Score calculado: {score}")
