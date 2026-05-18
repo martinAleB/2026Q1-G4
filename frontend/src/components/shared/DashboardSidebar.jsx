@@ -30,7 +30,7 @@ function getInitialCollapsedState() {
 export function DashboardSidebar() {
   const location = useLocation()
   const navigate = useNavigate()
-  const { user, logout } = useAuth()
+  const { user, fintechData, logout } = useAuth()
   const [collapsed, setCollapsed] = useState(getInitialCollapsedState)
   const showLabels = !collapsed
 
@@ -57,7 +57,7 @@ export function DashboardSidebar() {
           </div>
           {showLabels ? (
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{user?.name ?? 'Equipo fintech'}</p>
+              <p className="truncate text-sm font-medium">{fintechData?.fintech_name ?? user?.name ?? 'Equipo fintech'}</p>
               <p className="truncate text-xs text-muted-foreground">{user?.email ?? 'admin@fintech.com'}</p>
             </div>
           ) : null}

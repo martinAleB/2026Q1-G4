@@ -114,6 +114,7 @@ locals {
       in_vpc      = true
       env_vars = {
         DYNAMODB_TABLE_NAME = module.dynamodb_simulations.dynamodb_table_id
+        SQS_QUEUE_URL       = aws_sqs_queue.simulations.url
       }
     }
   }

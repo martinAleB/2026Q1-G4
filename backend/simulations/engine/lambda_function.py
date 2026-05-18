@@ -25,7 +25,14 @@ _FEATURE_COLUMNS = None
 _FILL_VALUES = None
 
 dynamodb = boto3.client('dynamodb')
+sqs = boto3.client('sqs')
 DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE_NAME')
+SQS_QUEUE_URL  = os.environ.get('SQS_QUEUE_URL')
+
+RETRY_DELAYS = [60, 120, 240, 480]
+
+class NoRetryError(Exception):
+    pass
 
 def _parse_monto_24dsf(valor) -> float:
     try:
@@ -213,8 +220,10 @@ def consultar_bcra(cuit: str) -> dict:
         return data.get('results', {})
     except requests.exceptions.HTTPError as e:
         if response.status_code == 404:
-            raise Exception(f"El CUIT {cuit} no posee historial en BCRA o no existe (HTTP 404).")
+            raise NoRetryError(f"El CUIT {cuit} no posee historial en BCRA (HTTP 404).")
         raise Exception(f"Error consultando BCRA: HTTP {response.status_code}")
+    except NoRetryError:
+        raise
     except Exception as e:
         raise Exception(f"Error de conexión con BCRA: {str(e)}")
 
@@ -251,32 +260,56 @@ def lambda_handler(event, context):
         task_id = None
         cuit = None
         sub = None
+        body = {}
+        attempt = 0
         try:
             body = json.loads(record['body'])
             task_id = body.get('task_id')
             cuit = body.get('cuit')
             sub = body.get('sub')
+            attempt = body.get('attempt', 0)
 
             if not task_id or not cuit or not sub:
                 print("Mensaje inválido, faltan campos requeridos, ignorando.")
                 continue
 
-            print(f"Procesando Task: {task_id} - CUIT: {cuit} - Sub: {sub}")
+            print(f"Procesando Task: {task_id} - CUIT: {cuit} - Sub: {sub} - Intento: {attempt}")
 
             bcra_data = consultar_bcra(cuit)
 
             features = features_desde_api(bcra_data)
             if features is None:
-                raise ValueError("No hay suficientes periodos en BCRA (min 7).")
+                raise NoRetryError("No hay suficientes periodos en BCRA (min 7).")
 
             score = predecir_score(features)
             print(f"Score calculado: {score}")
 
             update_simulation_status(sub, cuit, task_id, "COMPLETED", score=score)
 
-        except Exception as e:
-            print(f"Error procesando: {str(e)}")
+        except NoRetryError as e:
+            print(f"Error sin reintento para {task_id}: {str(e)}")
             if task_id and sub and cuit:
                 update_simulation_status(sub, cuit, task_id, "FAILED", error=str(e))
-            
+
+        except Exception as e:
+            print(f"Error procesando (intento {attempt}): {str(e)}")
+            if task_id and sub and cuit:
+                if attempt < len(RETRY_DELAYS):
+                    delay = RETRY_DELAYS[attempt]
+                    print(f"Reintentando en {delay}s (intento {attempt + 1}/{len(RETRY_DELAYS)})")
+                    sqs.send_message(
+                        QueueUrl=SQS_QUEUE_URL,
+                        MessageBody=json.dumps({
+                            'task_id':   task_id,
+                            'cuit':      cuit,
+                            'sub':       sub,
+                            'timestamp': body.get('timestamp'),
+                            'attempt':   attempt + 1
+                        }),
+                        DelaySeconds=delay
+                    )
+                else:
+                    print(f"Reintentos agotados para {task_id}, marcando FAILED.")
+                    update_simulation_status(sub, cuit, task_id, "FAILED", error=str(e))
+
     return {"statusCode": 200, "body": "OK"}

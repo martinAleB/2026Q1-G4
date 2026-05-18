@@ -128,7 +128,7 @@ export default function SimulationsPage() {
         const mappedQueries = data.results.map(q => {
           let estado = 'pendiente'
           if (q.status === 'COMPLETED') estado = 'completado'
-          else if (q.status === 'ERROR') estado = 'error'
+          else if (q.status === 'FAILED') estado = 'error'
 
           return {
             id: q.task_id,
