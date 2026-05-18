@@ -371,9 +371,9 @@ def lambda_handler(event, context):
             update_simulation_status(sub, cuit, task_id, "COMPLETED", score=score)
 
         except NoRetryError as e:
-            print(f"Error sin reintento para {task_id}: {str(e)}")
+            print(f"Sin datos para {task_id}: {str(e)}")
             if task_id and sub and cuit:
-                update_simulation_status(sub, cuit, task_id, "FAILED", error=str(e))
+                update_simulation_status(sub, cuit, task_id, "NO_DATA", error=str(e))
 
         except Exception as e:
             print(f"Error procesando (intento {attempt}): {str(e)}")

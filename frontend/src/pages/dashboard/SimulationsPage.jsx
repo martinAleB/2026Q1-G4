@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, RefreshCw, Loader2, ChevronLeft, ChevronRight, Ban, Eye, Flag, Sparkles, AlertCircle } from 'lucide-react'
+import { Search, RefreshCw, Loader2, ChevronLeft, ChevronRight, Ban, Eye, Flag, Sparkles, AlertCircle, SearchX } from 'lucide-react'
 
 const TOKENS_KEY = 'cloud-dashboard-tokens'
 
@@ -56,6 +56,9 @@ function ScoreBadge({ score, estado }) {
   if (estado === 'error') {
     return <span className="text-sm text-destructive">Error</span>
   }
+  if (estado === 'sin_datos') {
+    return <span className="text-sm text-muted-foreground">Sin datos</span>
+  }
   if (estado === 'rechazado' || score === null || score === undefined) {
     return <span className="text-sm text-muted-foreground">-</span>
   }
@@ -72,6 +75,7 @@ function EstadoBadge({ estado }) {
   if (estado === 'pendiente') return <Badge variant="outline" className="text-yellow-600 border-yellow-200 bg-yellow-50">Pendiente</Badge>
   if (estado === 'error') return <Badge variant="outline" className="text-red-600 border-red-200 bg-red-50">Error</Badge>
   if (estado === 'rechazado') return <Badge variant="outline" className="text-orange-600 border-orange-200 bg-orange-50">Rechazado</Badge>
+  if (estado === 'sin_datos') return <Badge variant="outline" className="text-slate-600 border-slate-200 bg-slate-50">Sin datos</Badge>
   return <Badge variant="outline">{estado}</Badge>
 }
 
@@ -151,6 +155,7 @@ function RecommendationsDialog({ open, onOpenChange, query, products }) {
             )}
             {query.estado === 'rechazado' && 'Cliente descartado por la política general de la fintech.'}
             {query.estado === 'error' && 'La simulación falló por un error técnico.'}
+            {query.estado === 'sin_datos' && 'No hay información crediticia disponible para este CUIT.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -180,6 +185,18 @@ function RecommendationsDialog({ open, onOpenChange, query, products }) {
                 <div className="space-y-1">
                   <p className="font-medium">Error técnico</p>
                   <p className="text-xs">{query.error_message || 'Sin detalle disponible.'}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {query.estado === 'sin_datos' && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900">
+              <div className="flex items-start gap-2">
+                <SearchX className="mt-0.5 size-4 shrink-0" />
+                <div className="space-y-1">
+                  <p className="font-medium">Sin historial crediticio</p>
+                  <p className="text-xs">{query.error_message || 'El CUIT consultado no posee registros suficientes en el BCRA para generar un score.'}</p>
                 </div>
               </div>
             </div>
@@ -298,6 +315,7 @@ export default function SimulationsPage() {
           if (q.status === 'COMPLETED') estado = 'completado'
           else if (q.status === 'FAILED') estado = 'error'
           else if (q.status === 'REJECTED') estado = 'rechazado'
+          else if (q.status === 'NO_DATA') estado = 'sin_datos'
 
           return {
             id: q.task_id,
@@ -429,7 +447,7 @@ export default function SimulationsPage() {
                 </TableRow>
               ) : (
                 paginatedQueries.map((q) => {
-                  const canOpen = q.estado === 'completado' || q.estado === 'rechazado' || q.estado === 'error'
+                  const canOpen = q.estado === 'completado' || q.estado === 'rechazado' || q.estado === 'error' || q.estado === 'sin_datos'
                   return (
                     <TableRow key={q.id}>
                       <TableCell className="font-mono text-sm font-medium">
