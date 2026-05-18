@@ -11,6 +11,7 @@ locals {
     "simulations-handler"       = "${path.root}/../backend/simulations/handler"
     "simulations-results"       = "${path.root}/../backend/simulations/results"
     "simulations-engine"        = "${path.root}/../backend/simulations/engine-dist"
+    "recommendations-get"       = "${path.root}/../backend/recommendations-get"
   }
 
   lambda_configs = {
@@ -118,6 +119,17 @@ locals {
         SQS_QUEUE_URL          = aws_sqs_queue.simulations.url
       }
     }
+    "recommendations-get" = {
+      handler     = "index.handler"
+      runtime     = "nodejs20.x"
+      timeout     = 30
+      memory_size = 256
+      in_vpc      = true
+      env_vars = {
+        DYNAMODB_TABLE_NAME     = module.dynamodb_simulations.dynamodb_table_id
+        DYNAMODB_PRODUCTO_TABLE = module.dynamodb_producto.dynamodb_table_id
+      }
+    }
   }
 
   lambda_permissions = {
@@ -151,6 +163,9 @@ locals {
     "simulations-results" = [
       { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
     ]
+    "recommendations-get" = [
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
+    ]
   }
 
   lambda_event_sources = {
@@ -169,17 +184,19 @@ locals {
     "product-delete"      = aws_lambda_function.lambdas["product-delete"].invoke_arn
     "simulations-handler" = aws_lambda_function.lambdas["simulations-handler"].invoke_arn
     "simulations-results" = aws_lambda_function.lambdas["simulations-results"].invoke_arn
+    "recommendations-get" = aws_lambda_function.lambdas["recommendations-get"].invoke_arn
   }
 
   api_routes = {
-    "callback"         = { route_key = "GET /callback",         integration = "auth-callback",       auth = false }
-    "fintech-get"      = { route_key = "GET /fintech",          integration = "fintech-get",         auth = true  }
-    "fintech-put"      = { route_key = "PUT /fintech",          integration = "fintech-update",      auth = true  }
-    "producto-get"     = { route_key = "GET /producto",         integration = "product-get",         auth = true  }
-    "producto-post"    = { route_key = "POST /producto",        integration = "product-create",      auth = true  }
-    "producto-put"     = { route_key = "PUT /producto/{id}",    integration = "product-update",      auth = true  }
-    "producto-delete"  = { route_key = "DELETE /producto/{id}", integration = "product-delete",      auth = true  }
-    "simulations-post" = { route_key = "POST /simulations",     integration = "simulations-handler", auth = true  }
-    "simulations-get"  = { route_key = "GET /simulations",      integration = "simulations-results", auth = true  }
+    "callback"            = { route_key = "GET /callback", integration = "auth-callback", auth = false }
+    "fintech-get"         = { route_key = "GET /fintech", integration = "fintech-get", auth = true }
+    "fintech-put"         = { route_key = "PUT /fintech", integration = "fintech-update", auth = true }
+    "producto-get"        = { route_key = "GET /producto", integration = "product-get", auth = true }
+    "producto-post"       = { route_key = "POST /producto", integration = "product-create", auth = true }
+    "producto-put"        = { route_key = "PUT /producto/{id}", integration = "product-update", auth = true }
+    "producto-delete"     = { route_key = "DELETE /producto/{id}", integration = "product-delete", auth = true }
+    "simulations-post"    = { route_key = "POST /simulations", integration = "simulations-handler", auth = true }
+    "simulations-get"     = { route_key = "GET /simulations", integration = "simulations-results", auth = true }
+    "recomendaciones-get" = { route_key = "GET /recomendaciones", integration = "recommendations-get", auth = true }
   }
 }

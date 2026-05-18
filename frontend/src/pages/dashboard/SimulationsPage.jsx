@@ -75,27 +75,6 @@ function EstadoBadge({ estado }) {
   return <Badge variant="outline">{estado}</Badge>
 }
 
-function rankProducts(products, scoreX10) {
-  const elegibles = []
-  const noElegibles = []
-  for (const p of products) {
-    const min = Number(p.min_score)
-    const max = Number(p.max_score)
-    const pri = Number(p.prioridad ?? 0)
-    if (scoreX10 >= min && scoreX10 <= max) {
-      elegibles.push({ ...p, _prioridad: pri })
-    } else {
-      const motivo = scoreX10 < min
-        ? `Score ${scoreX10.toFixed(2)} por debajo del mínimo ${min}`
-        : `Score ${scoreX10.toFixed(2)} por encima del máximo ${max}`
-      noElegibles.push({ ...p, _prioridad: pri, _motivo: motivo })
-    }
-  }
-  elegibles.sort((a, b) => b._prioridad - a._prioridad || a.nombre.localeCompare(b.nombre))
-  noElegibles.sort((a, b) => b._prioridad - a._prioridad || a.nombre.localeCompare(b.nombre))
-  return { elegibles, noElegibles }
-}
-
 function PriorityBadge({ value }) {
   const v = Number(value ?? 0)
   const color =
@@ -110,7 +89,7 @@ function PriorityBadge({ value }) {
   )
 }
 
-function ProductRow({ product, disabled, motivo }) {
+function ProductRow({ product, disabled }) {
   return (
     <div className={`rounded-xl border p-3 transition-colors ${disabled ? 'border-dashed bg-muted/30 opacity-60' : 'border-border bg-card hover:bg-muted/30'}`}>
       <div className="flex items-start justify-between gap-3">
@@ -122,23 +101,25 @@ function ProductRow({ product, disabled, motivo }) {
           <p className="text-xs text-muted-foreground mt-0.5">
             Scoring admitido: <span className="font-medium text-foreground">{product.min_score} – {product.max_score}</span>
           </p>
-          {disabled && motivo && (
-            <p className="text-xs text-orange-600 mt-1">{motivo}</p>
+          {disabled && product.motivo && (
+            <p className="text-xs text-orange-600 mt-1">{product.motivo}</p>
           )}
         </div>
-        <PriorityBadge value={product._prioridad} />
+        <PriorityBadge value={product.prioridad} />
       </div>
     </div>
   )
 }
 
-function RecommendationsDialog({ open, onOpenChange, query, products }) {
+function RecommendationsDialog({ open, onOpenChange, query, recommendations, isLoading, error }) {
   if (!query) return null
 
-  const scoreX10 = query.score !== null && query.score !== undefined ? query.score * 10 : null
-  const { elegibles, noElegibles } = query.estado === 'completado' && scoreX10 !== null
-    ? rankProducts(products, scoreX10)
-    : { elegibles: [], noElegibles: products.map(p => ({ ...p, _prioridad: Number(p.prioridad ?? 0), _motivo: null })) }
+  const estado = query.estado
+  const elegibles = recommendations?.elegibles || []
+  const no_elegibles = recommendations?.no_elegibles || []
+  const scoreX10 = recommendations?.cliente?.score_x10 ?? null
+  const rejection_reasons = recommendations?.cliente?.rejection_reasons || query.rejection_reasons || []
+  const error_message = recommendations?.cliente?.error_message || query.error_message || null
 
   return (
     <DialogRoot open={open} onOpenChange={onOpenChange}>
@@ -146,24 +127,43 @@ function RecommendationsDialog({ open, onOpenChange, query, products }) {
         <DialogHeader>
           <DialogTitle className="text-lg font-bold">Recomendaciones para {formatCuit(query.cuit)}</DialogTitle>
           <DialogDescription>
-            {query.estado === 'completado' && scoreX10 !== null && (
+            {estado === 'completado' && scoreX10 !== null && (
               <>Score del cliente: <span className="font-semibold text-foreground">{scoreX10.toFixed(2)}</span> / 10</>
             )}
-            {query.estado === 'rechazado' && 'Cliente descartado por la política general de la fintech.'}
-            {query.estado === 'error' && 'La simulación falló por un error técnico.'}
+            {estado === 'rechazado' && 'Cliente descartado por la política general de la fintech.'}
+            {estado === 'error' && 'La simulación falló por un error técnico.'}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-5 pt-2">
-          {query.estado === 'rechazado' && (
+          {isLoading && (
+            <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />
+              Cargando recomendaciones…
+            </div>
+          )}
+
+          {!isLoading && error && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                <div className="space-y-1">
+                  <p className="font-medium">No se pudieron cargar las recomendaciones</p>
+                  <p className="text-xs">{error}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!isLoading && !error && estado === 'rechazado' && (
             <div className="rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm text-orange-900">
               <div className="flex items-start gap-2">
                 <Ban className="mt-0.5 size-4 shrink-0" />
                 <div className="space-y-1.5">
                   <p className="font-medium">Motivos del rechazo</p>
-                  {query.rejection_reasons.length > 0 ? (
+                  {rejection_reasons.length > 0 ? (
                     <ul className="list-disc pl-4 space-y-0.5 text-xs">
-                      {query.rejection_reasons.map((r, i) => <li key={i}>{r}</li>)}
+                      {rejection_reasons.map((r, i) => <li key={i}>{r}</li>)}
                     </ul>
                   ) : (
                     <p className="text-xs">Sin detalle disponible.</p>
@@ -173,19 +173,19 @@ function RecommendationsDialog({ open, onOpenChange, query, products }) {
             </div>
           )}
 
-          {query.estado === 'error' && (
+          {!isLoading && !error && estado === 'error' && (
             <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900">
               <div className="flex items-start gap-2">
                 <AlertCircle className="mt-0.5 size-4 shrink-0" />
                 <div className="space-y-1">
                   <p className="font-medium">Error técnico</p>
-                  <p className="text-xs">{query.error_message || 'Sin detalle disponible.'}</p>
+                  <p className="text-xs">{error_message || 'Sin detalle disponible.'}</p>
                 </div>
               </div>
             </div>
           )}
 
-          {query.estado === 'completado' && (
+          {!isLoading && !error && estado === 'completado' && (
             <div className="space-y-4">
               <div>
                 <div className="flex items-center gap-2 mb-2">
@@ -204,17 +204,15 @@ function RecommendationsDialog({ open, onOpenChange, query, products }) {
                 )}
               </div>
 
-              {noElegibles.length > 0 && (
+              {no_elegibles.length > 0 && (
                 <div>
                   <div className="flex items-center gap-2 mb-2">
                     <Ban className="size-4 text-muted-foreground" />
                     <h4 className="font-semibold text-muted-foreground">No aplicables para este perfil</h4>
-                    <span className="text-xs text-muted-foreground">({noElegibles.length})</span>
+                    <span className="text-xs text-muted-foreground">({no_elegibles.length})</span>
                   </div>
                   <div className="space-y-2">
-                    {noElegibles.map(p => (
-                      <ProductRow key={p.producto_id} product={p} disabled motivo={p._motivo} />
-                    ))}
+                    {no_elegibles.map(p => <ProductRow key={p.producto_id} product={p} disabled />)}
                   </div>
                 </div>
               )}
@@ -237,8 +235,10 @@ export default function SimulationsPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [queries, setQueries] = useState([])
-  const [products, setProducts] = useState([])
   const [selectedQuery, setSelectedQuery] = useState(null)
+  const [recommendations, setRecommendations] = useState(null)
+  const [isLoadingRecs, setIsLoadingRecs] = useState(false)
+  const [recsError, setRecsError] = useState('')
   const [page, setPage] = useState(1)
   const PAGE_SIZE = 10
   const totalPages = Math.ceil(queries.length / PAGE_SIZE)
@@ -246,17 +246,35 @@ export default function SimulationsPage() {
 
   useEffect(() => {
     handleRefresh()
-    fetchProducts()
   }, [])
 
-  const fetchProducts = async () => {
+  useEffect(() => {
+    if (!selectedQuery) {
+      setRecommendations(null)
+      setRecsError('')
+      return
+    }
+    fetchRecommendations(selectedQuery.id)
+  }, [selectedQuery])
+
+  const fetchRecommendations = async (taskId) => {
+    setIsLoadingRecs(true)
+    setRecsError('')
+    setRecommendations(null)
     try {
-      const res = await fetch(`${import.meta.env.VITE_SIMULATIONS_API_URL}/producto`, { headers: authHeaders() })
-      if (!res.ok) return
-      const data = await res.json()
-      setProducts(Array.isArray(data) ? data : [])
+      const res = await fetch(
+        `${import.meta.env.VITE_SIMULATIONS_API_URL}/recomendaciones?task_id=${encodeURIComponent(taskId)}`,
+        { headers: authHeaders() }
+      )
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || `Error ${res.status}`)
+      }
+      setRecommendations(await res.json())
     } catch (e) {
-      console.error('Error cargando productos:', e)
+      setRecsError(e.message || 'Error de red al cargar las recomendaciones')
+    } finally {
+      setIsLoadingRecs(false)
     }
   }
 
@@ -291,7 +309,7 @@ export default function SimulationsPage() {
         throw new Error('Error al obtener los resultados')
       }
       const data = await response.json()
-      
+
       if (data.results) {
         const mappedQueries = data.results.map(q => {
           let estado = 'pendiente'
@@ -309,7 +327,7 @@ export default function SimulationsPage() {
             error_message: q.error_message || null,
           }
         })
-        
+
         mappedQueries.sort((a, b) => new Date(b.fechaConsulta) - new Date(a.fechaConsulta))
         setQueries(mappedQueries)
       }
@@ -498,7 +516,9 @@ export default function SimulationsPage() {
         open={Boolean(selectedQuery)}
         onOpenChange={open => { if (!open) setSelectedQuery(null) }}
         query={selectedQuery}
-        products={products}
+        recommendations={recommendations}
+        isLoading={isLoadingRecs}
+        error={recsError}
       />
     </div>
   )
