@@ -11,7 +11,7 @@ function respond(statusCode, body) {
   return { statusCode, body: JSON.stringify(body) };
 }
 
-const REQUIRED_FIELDS = ['nombre', 'monto', 'cuotas', 'interes', 'min_score', 'max_score'];
+const REQUIRED_FIELDS = ['nombre', 'monto', 'cuotas', 'interes', 'min_score', 'max_score', 'prioridad'];
 
 exports.handler = async (event) => {
 
@@ -26,15 +26,19 @@ exports.handler = async (event) => {
   if (missing.length > 0) return respond(400, { error: `Missing required fields: ${missing.join(', ')}` });
 
   try {
-    const { nombre, monto, cuotas, interes, min_score, max_score } = body;
-    
+    const { nombre, monto, cuotas, interes, min_score, max_score, prioridad } = body;
+
     if (min_score > max_score) {
       return respond(400, { error: 'min_score cannot be greater than max_score' });
     }
 
+    if (!Number.isInteger(prioridad) || prioridad < 1 || prioridad > 10) {
+      return respond(400, { error: 'prioridad must be an integer between 1 and 10' });
+    }
+
     const plazo = body.plazo !== undefined ? body.plazo : cuotas;
     const producto_id = randomUUID();
-    const item = { sub, producto_id, nombre, monto, cuotas, interes, plazo, min_score, max_score };
+    const item = { sub, producto_id, nombre, monto, cuotas, interes, plazo, min_score, max_score, prioridad };
 
     await ddb.send(new PutCommand({ TableName: TABLE, Item: item }));
     return respond(201, item);

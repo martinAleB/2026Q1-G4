@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, RefreshCw, Clock, CheckCircle2, XCircle, Loader2, ChevronLeft, ChevronRight, Ban } from 'lucide-react'
+import { Search, RefreshCw, Loader2, ChevronLeft, ChevronRight, Ban, Eye, Flag, Sparkles, AlertCircle } from 'lucide-react'
 
 const TOKENS_KEY = 'cloud-dashboard-tokens'
 
@@ -17,6 +17,10 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
+  DialogRoot, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter, DialogClose,
+} from '@/components/ui/dialog'
+import {
   Table,
   TableBody,
   TableCell,
@@ -24,6 +28,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+
+function formatARS(n) {
+  if (n === null || n === undefined) return '—'
+  return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n)
+}
 
 function formatCuit(cuit) {
   if (!cuit || cuit.length !== 11) return cuit
@@ -42,48 +51,185 @@ function formatDate(isoString) {
 
 function ScoreBadge({ score, estado }) {
   if (estado === 'pendiente') {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-sm text-yellow-600">
-        <Clock className="size-3.5" />
-        Pendiente
-      </span>
-    )
+    return <span className="text-sm text-yellow-600">Pendiente</span>
   }
   if (estado === 'error') {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-sm text-destructive">
-        <XCircle className="size-3.5" />
-        Error
-      </span>
-    )
+    return <span className="text-sm text-destructive">Error</span>
   }
-  if (estado === 'rechazado') {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-        -
-      </span>
-    )
+  if (estado === 'rechazado' || score === null || score === undefined) {
+    return <span className="text-sm text-muted-foreground">-</span>
   }
-  const multipliedScore = score !== null && score !== undefined ? score * 10 : 0;
+  const multipliedScore = score * 10
   const color =
-    multipliedScore >= 7 ? 'text-emerald-600 bg-emerald-50 border-emerald-200' :
-    multipliedScore >= 5 ? 'text-amber-600 bg-amber-50 border-amber-200' :
-                  'text-red-600 bg-red-50 border-red-200'
-
-  return (
-    <span className={`inline-flex items-center gap-1.5 text-sm font-semibold px-2 py-0.5 rounded-md border ${color}`}>
-      <CheckCircle2 className="size-3.5" />
-      {score !== null && score !== undefined ? multipliedScore.toFixed(2) : '-'}
-    </span>
-  )
+    multipliedScore >= 7 ? 'text-emerald-600' :
+    multipliedScore >= 5 ? 'text-amber-600' :
+                           'text-red-600'
+  return <span className={`text-sm font-medium ${color}`}>{multipliedScore.toFixed(2)}</span>
 }
 
 function EstadoBadge({ estado }) {
   if (estado === 'completado') return <Badge variant="outline" className="text-emerald-600 border-emerald-200 bg-emerald-50">Completado</Badge>
   if (estado === 'pendiente') return <Badge variant="outline" className="text-yellow-600 border-yellow-200 bg-yellow-50">Pendiente</Badge>
   if (estado === 'error') return <Badge variant="outline" className="text-red-600 border-red-200 bg-red-50">Error</Badge>
-  if (estado === 'rechazado') return <Badge variant="outline" className="text-orange-600 border-orange-200 bg-orange-50"><Ban className="size-3" />Rechazado</Badge>
+  if (estado === 'rechazado') return <Badge variant="outline" className="text-orange-600 border-orange-200 bg-orange-50">Rechazado</Badge>
   return <Badge variant="outline">{estado}</Badge>
+}
+
+function rankProducts(products, scoreX10) {
+  const elegibles = []
+  const noElegibles = []
+  for (const p of products) {
+    const min = Number(p.min_score)
+    const max = Number(p.max_score)
+    const pri = Number(p.prioridad ?? 0)
+    if (scoreX10 >= min && scoreX10 <= max) {
+      elegibles.push({ ...p, _prioridad: pri })
+    } else {
+      const motivo = scoreX10 < min
+        ? `Score ${scoreX10.toFixed(2)} por debajo del mínimo ${min}`
+        : `Score ${scoreX10.toFixed(2)} por encima del máximo ${max}`
+      noElegibles.push({ ...p, _prioridad: pri, _motivo: motivo })
+    }
+  }
+  elegibles.sort((a, b) => b._prioridad - a._prioridad || a.nombre.localeCompare(b.nombre))
+  noElegibles.sort((a, b) => b._prioridad - a._prioridad || a.nombre.localeCompare(b.nombre))
+  return { elegibles, noElegibles }
+}
+
+function PriorityBadge({ value }) {
+  const v = Number(value ?? 0)
+  const color =
+    v >= 8 ? 'text-emerald-600 border-emerald-200 bg-emerald-50' :
+    v >= 5 ? 'text-blue-600 border-blue-200 bg-blue-50' :
+             'text-muted-foreground border-border bg-muted/40'
+  return (
+    <Badge variant="outline" className={`gap-1 ${color}`}>
+      <Flag className="size-3" />
+      Prioridad {v}
+    </Badge>
+  )
+}
+
+function ProductRow({ product, disabled, motivo }) {
+  return (
+    <div className={`rounded-xl border p-3 transition-colors ${disabled ? 'border-dashed bg-muted/30 opacity-60' : 'border-border bg-card hover:bg-muted/30'}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-medium leading-snug">{product.nombre}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {formatARS(product.monto)} · {product.cuotas} cuotas · {product.interes}% anual
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Scoring admitido: <span className="font-medium text-foreground">{product.min_score} – {product.max_score}</span>
+          </p>
+          {disabled && motivo && (
+            <p className="text-xs text-orange-600 mt-1">{motivo}</p>
+          )}
+        </div>
+        <PriorityBadge value={product._prioridad} />
+      </div>
+    </div>
+  )
+}
+
+function RecommendationsDialog({ open, onOpenChange, query, products }) {
+  if (!query) return null
+
+  const scoreX10 = query.score !== null && query.score !== undefined ? query.score * 10 : null
+  const { elegibles, noElegibles } = query.estado === 'completado' && scoreX10 !== null
+    ? rankProducts(products, scoreX10)
+    : { elegibles: [], noElegibles: products.map(p => ({ ...p, _prioridad: Number(p.prioridad ?? 0), _motivo: null })) }
+
+  return (
+    <DialogRoot open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-lg font-bold">Recomendaciones para {formatCuit(query.cuit)}</DialogTitle>
+          <DialogDescription>
+            {query.estado === 'completado' && scoreX10 !== null && (
+              <>Score del cliente: <span className="font-semibold text-foreground">{scoreX10.toFixed(2)}</span> / 10</>
+            )}
+            {query.estado === 'rechazado' && 'Cliente descartado por la política general de la fintech.'}
+            {query.estado === 'error' && 'La simulación falló por un error técnico.'}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-5 pt-2">
+          {query.estado === 'rechazado' && (
+            <div className="rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm text-orange-900">
+              <div className="flex items-start gap-2">
+                <Ban className="mt-0.5 size-4 shrink-0" />
+                <div className="space-y-1.5">
+                  <p className="font-medium">Motivos del rechazo</p>
+                  {query.rejection_reasons.length > 0 ? (
+                    <ul className="list-disc pl-4 space-y-0.5 text-xs">
+                      {query.rejection_reasons.map((r, i) => <li key={i}>{r}</li>)}
+                    </ul>
+                  ) : (
+                    <p className="text-xs">Sin detalle disponible.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {query.estado === 'error' && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                <div className="space-y-1">
+                  <p className="font-medium">Error técnico</p>
+                  <p className="text-xs">{query.error_message || 'Sin detalle disponible.'}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {query.estado === 'completado' && (
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Sparkles className="size-4 text-primary" />
+                  <h4 className="font-semibold">Productos recomendados</h4>
+                  <span className="text-xs text-muted-foreground">({elegibles.length})</span>
+                </div>
+                {elegibles.length === 0 ? (
+                  <p className="text-sm text-muted-foreground rounded-xl border border-dashed p-4 text-center">
+                    Ningún producto coincide con el score del cliente.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {elegibles.map(p => <ProductRow key={p.producto_id} product={p} disabled={false} />)}
+                  </div>
+                )}
+              </div>
+
+              {noElegibles.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Ban className="size-4 text-muted-foreground" />
+                    <h4 className="font-semibold text-muted-foreground">No aplicables para este perfil</h4>
+                    <span className="text-xs text-muted-foreground">({noElegibles.length})</span>
+                  </div>
+                  <div className="space-y-2">
+                    {noElegibles.map(p => (
+                      <ProductRow key={p.producto_id} product={p} disabled motivo={p._motivo} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="pt-4">
+          <DialogClose asChild>
+            <Button variant="outline">Cerrar</Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </DialogRoot>
+  )
 }
 
 export default function SimulationsPage() {
@@ -91,6 +237,8 @@ export default function SimulationsPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [queries, setQueries] = useState([])
+  const [products, setProducts] = useState([])
+  const [selectedQuery, setSelectedQuery] = useState(null)
   const [page, setPage] = useState(1)
   const PAGE_SIZE = 10
   const totalPages = Math.ceil(queries.length / PAGE_SIZE)
@@ -98,7 +246,19 @@ export default function SimulationsPage() {
 
   useEffect(() => {
     handleRefresh()
+    fetchProducts()
   }, [])
+
+  const fetchProducts = async () => {
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SIMULATIONS_API_URL}/producto`, { headers: authHeaders() })
+      if (!res.ok) return
+      const data = await res.json()
+      setProducts(Array.isArray(data) ? data : [])
+    } catch (e) {
+      console.error('Error cargando productos:', e)
+    }
+  }
 
   const handleSimular = async () => {
     if (!cuit.trim() || cuit.length !== 11) return
@@ -143,8 +303,10 @@ export default function SimulationsPage() {
             id: q.task_id,
             cuit: q.cuit,
             fechaConsulta: q.created_at,
-            score: q.score || null,
-            estado: estado
+            score: q.score ?? null,
+            estado: estado,
+            rejection_reasons: q.rejection_reasons || [],
+            error_message: q.error_message || null,
           }
         })
         
@@ -245,19 +407,20 @@ export default function SimulationsPage() {
         </div>
 
         <Card className="p-2">
-          <Table>
+          <Table className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[160px]">CUIT / CUIL</TableHead>
-                <TableHead>Fecha de consulta</TableHead>
-                <TableHead>Score</TableHead>
-                <TableHead>Estado</TableHead>
+                <TableHead className="w-1/5">CUIT / CUIL</TableHead>
+                <TableHead className="w-1/5">Fecha de consulta</TableHead>
+                <TableHead className="w-1/5">Score</TableHead>
+                <TableHead className="w-1/5">Estado</TableHead>
+                <TableHead className="w-1/5 text-right">Detalle</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {paginatedQueries.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-12 text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
                     <div className="flex flex-col items-center gap-2">
                       <Search className="size-8 opacity-30" />
                       <span className="text-sm">No hay consultas registradas todavía.</span>
@@ -265,22 +428,37 @@ export default function SimulationsPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                paginatedQueries.map((q) => (
-                  <TableRow key={q.id}>
-                    <TableCell className="font-mono text-sm font-medium">
-                      {formatCuit(q.cuit)}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {formatDate(q.fechaConsulta)}
-                    </TableCell>
-                    <TableCell>
-                      <ScoreBadge score={q.score} estado={q.estado} />
-                    </TableCell>
-                    <TableCell>
-                      <EstadoBadge estado={q.estado} />
-                    </TableCell>
-                  </TableRow>
-                ))
+                paginatedQueries.map((q) => {
+                  const canOpen = q.estado === 'completado' || q.estado === 'rechazado' || q.estado === 'error'
+                  return (
+                    <TableRow key={q.id}>
+                      <TableCell className="font-mono text-sm font-medium">
+                        {formatCuit(q.cuit)}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {formatDate(q.fechaConsulta)}
+                      </TableCell>
+                      <TableCell>
+                        <ScoreBadge score={q.score} estado={q.estado} />
+                      </TableCell>
+                      <TableCell>
+                        <EstadoBadge estado={q.estado} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          disabled={!canOpen}
+                          onClick={() => setSelectedQuery(q)}
+                          className="text-muted-foreground"
+                        >
+                          <Eye className="size-4" />
+                          <span className="sr-only">Ver detalle</span>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
               )}
             </TableBody>
           </Table>
@@ -315,6 +493,13 @@ export default function SimulationsPage() {
           )}
         </Card>
       </div>
+
+      <RecommendationsDialog
+        open={Boolean(selectedQuery)}
+        onOpenChange={open => { if (!open) setSelectedQuery(null) }}
+        query={selectedQuery}
+        products={products}
+      />
     </div>
   )
 }

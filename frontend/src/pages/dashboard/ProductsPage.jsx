@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, MoreVertical, Package, Percent, Wallet, Pencil, Trash2 } from 'lucide-react'
+import { Plus, MoreVertical, Package, Percent, Wallet, Pencil, Trash2, Flag, AlertCircle } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,8 +23,8 @@ const MOCK = import.meta.env.VITE_MOCK === 'true'
 const TOKENS_KEY = 'cloud-dashboard-tokens'
 
 const MOCK_PRODUCTS = [
-  { producto_id: 'mock-1', sub: 'mock-sub-123', nombre: 'Préstamo Personal Plus', monto: 500000, cuotas: 24, interes: 45, min_score: 4.5, max_score: 8.5 },
-  { producto_id: 'mock-2', sub: 'mock-sub-123', nombre: 'Microcrédito Express',   monto:  80000, cuotas:  6, interes: 65, min_score: 2.0, max_score: 5.5 },
+  { producto_id: 'mock-1', sub: 'mock-sub-123', nombre: 'Préstamo Personal Plus', monto: 500000, cuotas: 24, interes: 45, min_score: 4.5, max_score: 8.5, prioridad: 8 },
+  { producto_id: 'mock-2', sub: 'mock-sub-123', nombre: 'Microcrédito Express',   monto:  80000, cuotas:  6, interes: 65, min_score: 2.0, max_score: 5.5, prioridad: 4 },
 ]
 
 function authHeaders() {
@@ -36,7 +36,7 @@ function authHeaders() {
 }
 
 const EMPTY_FORM = {
-  nombre: '', monto: '', cuotas: '', interes: '', min_score: '', max_score: '',
+  nombre: '', monto: '', cuotas: '', interes: '', min_score: '', max_score: '', prioridad: '',
 }
 
 const FIELDS = [
@@ -44,6 +44,7 @@ const FIELDS = [
   { key: 'monto',        label: 'Monto (ARS)',                   type: 'number', placeholder: 'Ej: 500000' },
   { key: 'cuotas',       label: 'Cuotas (meses)',                type: 'number', placeholder: 'Ej: 24' },
   { key: 'interes',      label: 'Tasa de interés anual (%)',      type: 'number', placeholder: 'Ej: 45' },
+  { key: 'prioridad',    label: 'Prioridad comercial',           type: 'number', placeholder: '1 – 10', step: '1' },
   { key: 'min_score', label: 'Scoring mínimo permitido',      type: 'number', placeholder: '0.00 – 10.00', step: '0.01' },
   { key: 'max_score', label: 'Scoring máximo permitido',      type: 'number', placeholder: '0.00 – 10.00', step: '0.01' },
 ]
@@ -52,7 +53,7 @@ function formatARS(n) {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(n)
 }
 
-function ProductForm({ open, onOpenChange, initial, onSubmit, isSaving }) {
+function ProductForm({ open, onOpenChange, initial, onSubmit, isSaving, submitError }) {
   const [form, setForm] = useState(EMPTY_FORM)
   const [errors, setErrors] = useState({})
 
@@ -65,6 +66,7 @@ function ProductForm({ open, onOpenChange, initial, onSubmit, isSaving }) {
         interes:      String(initial.interes),
         min_score: String(initial.min_score),
         max_score: String(initial.max_score),
+        prioridad: String(initial.prioridad ?? ''),
       } : EMPTY_FORM)
       setErrors({})
     }
@@ -80,6 +82,10 @@ function ProductForm({ open, onOpenChange, initial, onSubmit, isSaving }) {
     if (!e.min_score && (isNaN(min) || min < 0 || min > 10)) e.min_score = 'Debe ser entre 0 y 10'
     if (!e.max_score && (isNaN(max) || max < 0 || max > 10)) e.max_score = 'Debe ser entre 0 y 10'
     if (!e.min_score && !e.max_score && min > max) e.max_score = 'Debe ser ≥ al mínimo'
+    const pri = parseInt(form.prioridad, 10)
+    if (!e.prioridad && (isNaN(pri) || pri < 1 || pri > 10 || !Number.isInteger(parseFloat(form.prioridad)))) {
+      e.prioridad = 'Debe ser un entero entre 1 y 10'
+    }
     return e
   }
 
@@ -99,6 +105,7 @@ function ProductForm({ open, onOpenChange, initial, onSubmit, isSaving }) {
       interes:      parseFloat(form.interes),
       min_score: parseFloat(form.min_score),
       max_score: parseFloat(form.max_score),
+      prioridad: parseInt(form.prioridad, 10),
     })
   }
 
@@ -114,11 +121,18 @@ function ProductForm({ open, onOpenChange, initial, onSubmit, isSaving }) {
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-6 pt-2">
+        <form onSubmit={handleSubmit} className="space-y-6 pt-2" noValidate>
+          {submitError && (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+              <AlertCircle className="mt-0.5 size-4 shrink-0" />
+              <span>{submitError}</span>
+            </div>
+          )}
+
           {/* Condiciones financieras */}
           <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
-              {FIELDS.slice(0, 4).map(({ key, label, type, placeholder, colSpan, step }) => (
+              {FIELDS.slice(0, 5).map(({ key, label, type, placeholder, colSpan, step }) => (
                 <div key={key} className={`space-y-1.5 ${colSpan === 2 ? 'md:col-span-2' : ''}`}>
                   <Label htmlFor={key}>{label}</Label>
                   <Input
@@ -143,7 +157,7 @@ function ProductForm({ open, onOpenChange, initial, onSubmit, isSaving }) {
           {/* Requisitos de elegibilidad */}
           <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
-              {FIELDS.slice(4).map(({ key, label, type, placeholder, colSpan, step }) => (
+              {FIELDS.slice(5).map(({ key, label, type, placeholder, colSpan, step }) => (
                 <div key={key} className={`space-y-1.5 ${colSpan === 2 ? 'md:col-span-2' : ''}`}>
                   <Label htmlFor={key}>{label}</Label>
                   <Input
@@ -224,9 +238,17 @@ function ProductCard({ product, onEdit, onDelete }) {
             <p className="text-xs text-muted-foreground">Tasa anual</p>
             <p className="font-medium">{product.interes}%</p>
           </div>
-        </div>
-        <div className="rounded-xl bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-          Scoring admitido: <span className="font-semibold text-foreground">{product.min_score} – {product.max_score}</span>
+          <div>
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <Flag className="size-3" />
+              Prioridad
+            </p>
+            <p className="font-medium">{product.prioridad ?? '—'} / 10</p>
+          </div>
+          <div className="col-span-2">
+            <p className="text-xs text-muted-foreground">Scoring admitido</p>
+            <p className="font-medium">{product.min_score} – {product.max_score}</p>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -241,6 +263,7 @@ export default function ProductsPage() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
 
   useEffect(() => { fetchProducts() }, [])
 
@@ -259,34 +282,46 @@ export default function ProductsPage() {
 
   async function handleCreate(data) {
     setIsSaving(true)
+    setSubmitError('')
     try {
       const res = await fetch(`${API}/producto`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(data),
       })
-      if (!res.ok) throw new Error()
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || `Error ${res.status}`)
+      }
       const created = await res.json()
       setProducts(p => [created, ...p])
       setFormOpen(false)
-    } catch { /* no cierra el modal en error */ }
+    } catch (e) {
+      setSubmitError(e.message || 'No se pudo crear el producto')
+    }
     finally { setIsSaving(false) }
   }
 
   async function handleUpdate(data) {
     setIsSaving(true)
+    setSubmitError('')
     try {
       const res = await fetch(`${API}/producto/${editingProduct.producto_id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(data),
       })
-      if (!res.ok) throw new Error()
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error || `Error ${res.status}`)
+      }
       const updated = await res.json()
       setProducts(p => p.map(x => x.producto_id === updated.producto_id ? updated : x))
       setFormOpen(false)
       setEditingProduct(null)
-    } catch { }
+    } catch (e) {
+      setSubmitError(e.message || 'No se pudo actualizar el producto')
+    }
     finally { setIsSaving(false) }
   }
 
@@ -304,8 +339,8 @@ export default function ProductsPage() {
     finally { setIsDeleting(false) }
   }
 
-  function openCreate() { setEditingProduct(null); setFormOpen(true) }
-  function openEdit(product) { setEditingProduct(product); setFormOpen(true) }
+  function openCreate() { setEditingProduct(null); setSubmitError(''); setFormOpen(true) }
+  function openEdit(product) { setEditingProduct(product); setSubmitError(''); setFormOpen(true) }
 
   const avgInteres = products.length
     ? (products.reduce((s, p) => s + p.interes, 0) / products.length).toFixed(1)
@@ -380,10 +415,11 @@ export default function ProductsPage() {
       {/* Modal crear / editar */}
       <ProductForm
         open={formOpen}
-        onOpenChange={open => { setFormOpen(open); if (!open) setEditingProduct(null) }}
+        onOpenChange={open => { setFormOpen(open); if (!open) { setEditingProduct(null); setSubmitError('') } }}
         initial={editingProduct}
         onSubmit={editingProduct ? handleUpdate : handleCreate}
         isSaving={isSaving}
+        submitError={submitError}
       />
 
       {/* Modal confirmar eliminación */}

@@ -1,5 +1,8 @@
 # macOS
 .DS_Store
+* [0-9].*
+* copy.*
+* copy [0-9].*
 
 # Logs
 logs/

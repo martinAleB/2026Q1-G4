@@ -10,7 +10,7 @@ function respond(statusCode, body) {
   return { statusCode, body: JSON.stringify(body) };
 }
 
-const REQUIRED_FIELDS = ['nombre', 'monto', 'cuotas', 'interes', 'min_score', 'max_score'];
+const REQUIRED_FIELDS = ['nombre', 'monto', 'cuotas', 'interes', 'min_score', 'max_score', 'prioridad'];
 
 exports.handler = async (event) => {
 
@@ -28,22 +28,26 @@ exports.handler = async (event) => {
   if (missing.length > 0) return respond(400, { error: `Missing required fields: ${missing.join(', ')}` });
 
   try {
-    const { nombre, monto, cuotas, interes, min_score, max_score } = body;
-    
+    const { nombre, monto, cuotas, interes, min_score, max_score, prioridad } = body;
+
     if (min_score > max_score) {
       return respond(400, { error: 'min_score cannot be greater than max_score' });
+    }
+
+    if (!Number.isInteger(prioridad) || prioridad < 1 || prioridad > 10) {
+      return respond(400, { error: 'prioridad must be an integer between 1 and 10' });
     }
 
     const plazo = body.plazo !== undefined ? body.plazo : cuotas;
     const { Attributes } = await ddb.send(new UpdateCommand({
       TableName: TABLE,
       Key: { sub, producto_id },
-      UpdateExpression: 'SET nombre = :n, monto = :m, cuotas = :c, interes = :i, plazo = :p, min_score = :min, max_score = :max',
+      UpdateExpression: 'SET nombre = :n, monto = :m, cuotas = :c, interes = :i, plazo = :p, min_score = :min, max_score = :max, prioridad = :pri',
       ConditionExpression: 'attribute_exists(#sub)',
       ExpressionAttributeNames: { '#sub': 'sub' },
       ExpressionAttributeValues: {
         ':n': nombre, ':m': monto, ':c': cuotas, ':i': interes,
-        ':p': plazo, ':min': min_score, ':max': max_score,
+        ':p': plazo, ':min': min_score, ':max': max_score, ':pri': prioridad,
       },
       ReturnValues: 'ALL_NEW',
     }));
