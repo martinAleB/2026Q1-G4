@@ -1,13 +1,16 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   ArrowDownCircle,
   ArrowUpCircle,
   Calendar,
   CheckCircle,
   Users,
+  Search,
+  Loader2
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 const API = import.meta.env.VITE_SIMULATIONS_API_URL
@@ -34,35 +37,52 @@ function changeIcon(type) {
 }
 
 export default function PortfolioPage() {
-  const [portfolio, setPortfolio] = useState([])
+  const [items, setItems] = useState([])
+  const [nextToken, setNextToken] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [filter, setFilter] = useState('all') // 'all', 'up', 'down'
+  const [isSearching, setIsSearching] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
-  useEffect(() => {
-    async function fetchPortfolio() {
-      try {
-        const res = await fetch(`${API}/portfolio`, { headers: authHeaders() })
-        if (res.ok) {
-          const data = await res.json()
-          setPortfolio(data)
+  const fetchPortfolio = useCallback(async (token = null, query = '') => {
+    setIsLoading(true)
+    try {
+      let url = `${API}/portfolio?limit=10`
+      if (token) url += `&next_token=${token}`
+      if (query) url += `&cuit=${encodeURIComponent(query)}`
+
+      const res = await fetch(url, { headers: authHeaders() })
+      if (res.ok) {
+        const data = await res.json()
+        if (token) {
+          setItems(prev => [...prev, ...data.items])
+        } else {
+          setItems(data.items)
         }
-      } catch (error) {
-        console.error("Error fetching portfolio:", error)
-      } finally {
-        setIsLoading(false)
+        setNextToken(data.next_token)
       }
+    } catch (error) {
+      console.error("Error fetching portfolio:", error)
+    } finally {
+      setIsLoading(false)
+      setIsSearching(false)
     }
-    fetchPortfolio()
   }, [])
 
-  const improvedCount = portfolio.filter(item => item.trend === 'up').length
-  const deterioratedCount = portfolio.filter(item => item.trend === 'down').length
-  const totalCount = portfolio.length
+  useEffect(() => {
+    fetchPortfolio()
+  }, [fetchPortfolio])
 
-  const filteredPortfolio = portfolio.filter(item => {
-    if (filter === 'all') return true;
-    return item.trend === filter;
-  });
+  const handleSearch = (e) => {
+    e.preventDefault()
+    setIsSearching(true)
+    fetchPortfolio(null, searchQuery)
+  }
+
+  const handleLoadMore = () => {
+    if (nextToken && !isLoading) {
+      fetchPortfolio(nextToken, searchQuery)
+    }
+  }
 
   return (
     <div className="space-y-8 p-8">
@@ -79,50 +99,31 @@ export default function PortfolioPage() {
         </div>
       </div>
 
-      <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Clientes monitoreados</CardTitle>
-            <Users className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold">{totalCount}</div>
-            <p className="text-xs text-muted-foreground">Base total registrada</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Mejoras detectadas</CardTitle>
-            <ArrowUpCircle className="size-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold text-green-600">{improvedCount}</div>
-            <p className="text-xs text-muted-foreground">Oportunidades de negocio</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Deterioros detectados</CardTitle>
-            <ArrowDownCircle className="size-4 text-red-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold text-red-600">{deterioratedCount}</div>
-            <p className="text-xs text-muted-foreground">Riesgos en cartera</p>
-          </CardContent>
-        </Card>
-      </section>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="mr-1 text-sm font-medium">Filtrar por:</span>
-        <Button size="sm" variant={filter === 'all' ? 'default' : 'outline'} onClick={() => setFilter('all')}>Todos</Button>
-        <Button size="sm" variant={filter === 'up' ? 'default' : 'outline'} onClick={() => setFilter('up')}>
-          Mejoras
-        </Button>
-        <Button size="sm" variant={filter === 'down' ? 'default' : 'outline'} onClick={() => setFilter('down')}>
-          Deterioros
-        </Button>
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <form onSubmit={handleSearch} className="flex w-full max-w-sm items-center space-x-2">
+          <div className="relative w-full">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Buscar por CUIT exacto..."
+              className="pl-9"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <Button type="submit" disabled={isSearching}>
+            {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Buscar'}
+          </Button>
+          {searchQuery && (
+            <Button 
+              type="button" 
+              variant="ghost" 
+              onClick={() => { setSearchQuery(''); fetchPortfolio(null, ''); }}
+            >
+              Limpiar
+            </Button>
+          )}
+        </form>
       </div>
 
       <Card>
@@ -131,13 +132,13 @@ export default function PortfolioPage() {
           <CardDescription>Eventos detectados para cartera consultada</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
-             <div className="flex justify-center p-8 text-sm text-muted-foreground">Cargando cartera...</div>
-          ) : filteredPortfolio.length === 0 ? (
-             <div className="flex justify-center p-8 text-sm text-muted-foreground">No hay clientes monitoreados.</div>
+          {items.length === 0 && !isLoading ? (
+             <div className="flex justify-center p-8 text-sm text-muted-foreground">
+               No se encontraron clientes monitoreados.
+             </div>
           ) : (
             <div className="space-y-4">
-              {filteredPortfolio.map((client) => {
+              {items.map((client) => {
                 let label = client.trend === 'up' ? 'Mejora' : client.trend === 'down' ? 'Deterioro' : 'Sin cambios';
                 return (
                   <article
@@ -169,7 +170,11 @@ export default function PortfolioPage() {
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground">Monitoreado desde</p>
-                            <p className="font-medium">{client.tracked_at ? new Date(client.tracked_at).toLocaleDateString('es-AR') : '—'}</p>
+                            <p className="font-medium">
+                              {client.tracked_at 
+                                ? new Date(client.tracked_at).toLocaleDateString('es-AR') 
+                                : '—'}
+                            </p>
                           </div>
                         </div>
                       </div>
@@ -177,6 +182,20 @@ export default function PortfolioPage() {
                   </article>
                 )
               })}
+            </div>
+          )}
+
+          {isLoading && (
+            <div className="flex justify-center p-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          )}
+
+          {!isLoading && nextToken && (
+            <div className="mt-8 flex justify-center">
+              <Button variant="outline" onClick={handleLoadMore}>
+                Cargar más clientes
+              </Button>
             </div>
           )}
         </CardContent>
