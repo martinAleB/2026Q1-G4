@@ -1,5 +1,5 @@
 const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
-const { DynamoDBClient, PutItemCommand } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBClient, PutItemCommand, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
 const { v4: uuidv4 } = require('uuid');
 
 const sqsClient = new SQSClient({});
@@ -8,6 +8,7 @@ const dynamoClient = new DynamoDBClient({});
 const QUEUE_URL = process.env.SQS_QUEUE_URL;
 const DYNAMODB_TABLE = process.env.DYNAMODB_TABLE_NAME;
 const DYNAMODB_USER_TABLE = process.env.DYNAMODB_USER_TABLE;
+const DYNAMODB_PORTFOLIO_TABLE = process.env.DYNAMODB_PORTFOLIO_TABLE;
 
 exports.handler = async (event) => {
     try {
@@ -60,6 +61,39 @@ exports.handler = async (event) => {
                     cuit: { S: cuit }
                 }
             }));
+
+            // Monitoreo Pasivo (Portfolio)
+            if (DYNAMODB_PORTFOLIO_TABLE) {
+                try {
+                    // 1. Guardar o actualizar la info base del CUIT (sólo si no existe, o inicializarla)
+                    await dynamoClient.send(new UpdateItemCommand({
+                        TableName: DYNAMODB_PORTFOLIO_TABLE,
+                        Key: { pk: { S: `CUIT#${cuit}` }, sk: { S: 'INFO' } },
+                        UpdateExpression: "SET current_status = if_not_exists(current_status, :s), previous_status = if_not_exists(previous_status, :s), trend = if_not_exists(trend, :t), last_updated = if_not_exists(last_updated, :lu)",
+                        ExpressionAttributeValues: {
+                            ":s": { S: "1" }, // default status
+                            ":t": { S: "stable" },
+                            ":lu": { S: new Date().toISOString() }
+                        }
+                    }));
+                    
+                    // 2. Guardar la relación Fintech -> CUIT
+                    await dynamoClient.send(new PutItemCommand({
+                        TableName: DYNAMODB_PORTFOLIO_TABLE,
+                        Item: {
+                            pk:         { S: `CUIT#${cuit}` },
+                            sk:         { S: `FINTECH#${sub}` },
+                            gsi1_pk:    { S: `FINTECH#${sub}` },
+                            gsi1_sk:    { S: `CUIT#${cuit}` },
+                            tracked_at: { S: new Date().toISOString() }
+                        }
+                    }));
+                    console.log(`Saved CUIT ${cuit} to portfolio for fintech ${sub}`);
+                } catch (portfolioErr) {
+                    console.error("Error updating portfolio table:", portfolioErr);
+                    // No interrumpimos el flujo de la simulación por un error en portfolio
+                }
+            }
 
             const taskId = uuidv4();
             const timestamp = new Date().toISOString();

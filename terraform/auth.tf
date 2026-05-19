@@ -18,7 +18,7 @@ resource "aws_cognito_user_pool" "main" {
 }
 
 resource "aws_cognito_user_pool_domain" "main" {
-  domain       = "${var.project_name}-auth-domain"
+  domain       = "${var.project_name}-auth-domain-nashe"
   user_pool_id = aws_cognito_user_pool.main.id
 }
 

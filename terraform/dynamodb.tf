@@ -63,3 +63,31 @@ module "dynamodb_user" {
   billing_mode = "PAY_PER_REQUEST"
   tags         = { Project = var.project_name }
 }
+
+module "dynamodb_portfolio" {
+  source  = "terraform-aws-modules/dynamodb-table/aws"
+  version = "4.4.0"
+
+  name      = "${var.project_name}-portfolio"
+  hash_key  = "pk"
+  range_key = "sk"
+
+  attributes = [
+    { name = "pk", type = "S" },
+    { name = "sk", type = "S" },
+    { name = "gsi1_pk", type = "S" },
+    { name = "gsi1_sk", type = "S" },
+  ]
+
+  global_secondary_indexes = [
+    {
+      name               = "gsi1"
+      hash_key           = "gsi1_pk"
+      range_key          = "gsi1_sk"
+      projection_type    = "ALL"
+    }
+  ]
+
+  billing_mode = "PAY_PER_REQUEST"
+  tags         = { Project = var.project_name }
+}

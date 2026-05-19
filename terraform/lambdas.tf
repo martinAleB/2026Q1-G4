@@ -76,3 +76,15 @@ resource "aws_lambda_function" "lambdas" {
     variables = each.value.env_vars
   }
 }
+
+resource "aws_cloudwatch_event_rule" "portfolio_updater" {
+  name                = "${var.project_name}-portfolio-updater-cron"
+  description         = "Ejecuta portfolio-updater mensualmente"
+  schedule_expression = "cron(0 10 5 * ? *)" # El dia 5 de cada mes a las 10:00 UTC
+}
+
+resource "aws_cloudwatch_event_target" "portfolio_updater_target" {
+  rule      = aws_cloudwatch_event_rule.portfolio_updater.name
+  target_id = "portfolio_updater"
+  arn       = aws_lambda_function.lambdas["portfolio-updater"].arn
+}

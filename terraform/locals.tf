@@ -12,6 +12,8 @@ locals {
     "simulations-results"       = "${path.root}/../backend/simulations/results"
     "simulations-engine"        = "${path.root}/../backend/simulations/engine-dist"
     "recommendations-get"       = "${path.root}/../backend/recommendations-get"
+    "portfolio-get"             = "${path.root}/../backend/portfolio-get"
+    "portfolio-updater"         = "${path.root}/../backend/portfolio-updater"
   }
 
   lambda_configs = {
@@ -92,9 +94,10 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        SQS_QUEUE_URL       = aws_sqs_queue.simulations.url
-        DYNAMODB_TABLE_NAME = module.dynamodb_simulations.dynamodb_table_id
-        DYNAMODB_USER_TABLE = module.dynamodb_user.dynamodb_table_id
+        SQS_QUEUE_URL            = aws_sqs_queue.simulations.url
+        DYNAMODB_TABLE_NAME      = module.dynamodb_simulations.dynamodb_table_id
+        DYNAMODB_USER_TABLE      = module.dynamodb_user.dynamodb_table_id
+        DYNAMODB_PORTFOLIO_TABLE = module.dynamodb_portfolio.dynamodb_table_id
       }
     }
     "simulations-results" = {
@@ -126,8 +129,29 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DYNAMODB_TABLE_NAME    = module.dynamodb_simulations.dynamodb_table_id
-        DYNAMODB_PRODUCT_TABLE = module.dynamodb_product.dynamodb_table_id
+        DYNAMODB_TABLE_NAME      = module.dynamodb_simulations.dynamodb_table_id
+        DYNAMODB_PRODUCT_TABLE   = module.dynamodb_product.dynamodb_table_id
+        DYNAMODB_PORTFOLIO_TABLE = module.dynamodb_portfolio.dynamodb_table_id
+      }
+    }
+    "portfolio-get" = {
+      handler     = "index.handler"
+      runtime     = "nodejs20.x"
+      timeout     = 30
+      memory_size = 256
+      in_vpc      = true
+      env_vars = {
+        DYNAMODB_PORTFOLIO_TABLE = module.dynamodb_portfolio.dynamodb_table_id
+      }
+    }
+    "portfolio-updater" = {
+      handler     = "index.handler"
+      runtime     = "nodejs20.x"
+      timeout     = 180
+      memory_size = 256
+      in_vpc      = true
+      env_vars = {
+        DYNAMODB_PORTFOLIO_TABLE = module.dynamodb_portfolio.dynamodb_table_id
       }
     }
   }
@@ -166,6 +190,12 @@ locals {
     "recommendations-get" = [
       { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
     ]
+    "portfolio-get" = [
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
+    ]
+    "portfolio-updater" = [
+      { principal = "events.amazonaws.com", source_arn = aws_cloudwatch_event_rule.portfolio_updater.arn }
+    ]
   }
 
   lambda_event_sources = {
@@ -185,6 +215,7 @@ locals {
     "simulations-handler" = aws_lambda_function.lambdas["simulations-handler"].invoke_arn
     "simulations-results" = aws_lambda_function.lambdas["simulations-results"].invoke_arn
     "recommendations-get" = aws_lambda_function.lambdas["recommendations-get"].invoke_arn
+    "portfolio-get"       = aws_lambda_function.lambdas["portfolio-get"].invoke_arn
   }
 
   api_routes = {
@@ -198,5 +229,6 @@ locals {
     "simulations-post"    = { route_key = "POST /simulations", integration = "simulations-handler", auth = true }
     "simulations-get"     = { route_key = "GET /simulations", integration = "simulations-results", auth = true }
     "recommendations-get" = { route_key = "GET /recommendations", integration = "recommendations-get", auth = true }
+    "portfolio-get"       = { route_key = "GET /portfolio", integration = "portfolio-get", auth = true }
   }
 }
