@@ -12,26 +12,13 @@ resource "aws_cognito_user_pool" "main" {
     require_uppercase = true
   }
 
-  # TODO: Delete this
-  schema {
-    attribute_data_type      = "String"
-    developer_only_attribute = false
-    mutable                  = true
-    name                     = "fintech_name"
-    required                 = false
-    string_attribute_constraints {
-      min_length = 1
-      max_length = 256
-    }
-  }
-
   lambda_config {
     post_confirmation = aws_lambda_function.lambdas["fintech-post-confirmation"].arn
   }
 }
 
 resource "aws_cognito_user_pool_domain" "main" {
-  domain       = "${var.project_name}-auth-domain-nash"
+  domain       = "${var.project_name}-auth-domain"
   user_pool_id = aws_cognito_user_pool.main.id
 }
 
