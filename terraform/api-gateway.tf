@@ -1,7 +1,7 @@
 # --- API ---
 
-resource "aws_apigatewayv2_api" "simulations_api" {
-  name          = "${var.project_name}-simulations-api"
+resource "aws_apigatewayv2_api" "main" {
+  name          = "${var.project_name}-api"
   protocol_type = "HTTP"
 
   cors_configuration {
@@ -11,8 +11,8 @@ resource "aws_apigatewayv2_api" "simulations_api" {
   }
 }
 
-resource "aws_apigatewayv2_stage" "simulations_stage" {
-  api_id      = aws_apigatewayv2_api.simulations_api.id
+resource "aws_apigatewayv2_stage" "main" {
+  api_id      = aws_apigatewayv2_api.main.id
   name        = "$default"
   auto_deploy = true
 }
@@ -20,10 +20,10 @@ resource "aws_apigatewayv2_stage" "simulations_stage" {
 # --- Authorizer ---
 
 resource "aws_apigatewayv2_authorizer" "cognito_jwt" {
-  api_id           = aws_apigatewayv2_api.simulations_api.id
+  api_id           = aws_apigatewayv2_api.main.id
   authorizer_type  = "JWT"
   identity_sources = ["$request.header.Authorization"]
-  name             = "cognito-jwt"
+  name             = "${var.project_name}-cognito-jwt"
 
   jwt_configuration {
     audience = [aws_cognito_user_pool_client.main.id]
@@ -35,7 +35,7 @@ resource "aws_apigatewayv2_authorizer" "cognito_jwt" {
 
 resource "aws_apigatewayv2_integration" "lambdas" {
   for_each               = local.api_integrations
-  api_id                 = aws_apigatewayv2_api.simulations_api.id
+  api_id                 = aws_apigatewayv2_api.main.id
   integration_type       = "AWS_PROXY"
   connection_type        = "INTERNET"
   integration_method     = "POST"
@@ -47,15 +47,9 @@ resource "aws_apigatewayv2_integration" "lambdas" {
 
 resource "aws_apigatewayv2_route" "routes" {
   for_each           = local.api_routes
-  api_id             = aws_apigatewayv2_api.simulations_api.id
+  api_id             = aws_apigatewayv2_api.main.id
   route_key          = each.value.route_key
   target             = "integrations/${aws_apigatewayv2_integration.lambdas[each.value.integration].id}"
   authorization_type = each.value.auth ? "JWT" : "NONE"
   authorizer_id      = each.value.auth ? aws_apigatewayv2_authorizer.cognito_jwt.id : null
-}
-
-# --- Output ---
-
-output "simulations_api_endpoint" {
-  value = aws_apigatewayv2_api.simulations_api.api_endpoint
 }

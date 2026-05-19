@@ -42,22 +42,23 @@ terraform init -reconfigure "${TF_INIT_ARGS[@]}"
 
 echo "==> Ejecutando Terraform Destroy (Targeted)"
 terraform destroy -auto-approve \
-  -target=aws_dynamodb_table.simulations \
-  -target=aws_sqs_queue.simulations \
-  -target=aws_lambda_function.simulations_handler \
-  -target=aws_lambda_function.simulations_engine \
-  -target=aws_lambda_function.simulations_results \
-  -target=aws_apigatewayv2_api.simulations_api \
-  -target=aws_apigatewayv2_route.post_simulations \
-  -target=aws_apigatewayv2_route.get_simulations \
-  -target=aws_apigatewayv2_integration.handler_integration \
-  -target=aws_apigatewayv2_integration.results_integration \
-  -target=aws_lambda_permission.api_gw_handler \
-  -target=aws_lambda_permission.api_gw_results \
-  -target=aws_apigatewayv2_stage.simulations_stage \
-  -target=aws_lambda_event_source_mapping.sqs_to_engine \
+  -target=module.dynamodb_simulations \
+  -target=aws_sqs_queue.main \
+  "-target=aws_lambda_function.lambdas[\"simulations-handler\"]" \
+  "-target=aws_lambda_function.lambdas[\"simulations-engine\"]" \
+  "-target=aws_lambda_function.lambdas[\"simulations-results\"]" \
+  -target=aws_apigatewayv2_api.main \
+  "-target=aws_apigatewayv2_route.routes[\"simulations-post\"]" \
+  "-target=aws_apigatewayv2_route.routes[\"simulations-get\"]" \
+  "-target=aws_apigatewayv2_integration.lambdas[\"simulations-handler\"]" \
+  "-target=aws_apigatewayv2_integration.lambdas[\"simulations-results\"]" \
+  "-target=aws_lambda_permission.permissions[\"simulations-handler-0\"]" \
+  "-target=aws_lambda_permission.permissions[\"simulations-results-0\"]" \
+  -target=aws_apigatewayv2_stage.main \
+  "-target=aws_lambda_event_source_mapping.mappings[\"simulations-engine-0\"]" \
   -target=aws_s3_bucket.frontend \
   -target=aws_s3_bucket_versioning.frontend \
+  -target=aws_s3_bucket_server_side_encryption_configuration.frontend \
   -target=aws_s3_bucket_ownership_controls.frontend \
   -target=aws_s3_bucket_public_access_block.frontend \
   -target=aws_s3_bucket_website_configuration.frontend

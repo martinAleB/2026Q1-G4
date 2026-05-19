@@ -23,7 +23,7 @@ resource "aws_cognito_user_pool_domain" "main" {
 }
 
 resource "aws_cognito_user_pool_client" "main" {
-  name         = "${var.project_name}-client-2"
+  name         = "${var.project_name}-client"
   user_pool_id = aws_cognito_user_pool.main.id
 
   generate_secret = true
@@ -32,9 +32,20 @@ resource "aws_cognito_user_pool_client" "main" {
   allowed_oauth_flows                  = ["code"]
   allowed_oauth_scopes                 = ["email", "openid", "profile"]
 
-  callback_urls = ["${aws_apigatewayv2_api.simulations_api.api_endpoint}/callback"]
+  callback_urls = ["${aws_apigatewayv2_api.main.api_endpoint}/callback"]
 
   supported_identity_providers = ["COGNITO"]
+}
+
+resource "aws_secretsmanager_secret" "cognito_client_secret" {
+  name                    = "${var.project_name}/cognito/client-secret"
+  description             = "Cognito User Pool App Client secret, consumed by the auth-callback Lambda at runtime"
+  recovery_window_in_days = 0
+}
+
+resource "aws_secretsmanager_secret_version" "cognito_client_secret" {
+  secret_id     = aws_secretsmanager_secret.cognito_client_secret.id
+  secret_string = aws_cognito_user_pool_client.main.client_secret
 }
 
 resource "aws_lambda_function" "auth_callback" {
@@ -43,32 +54,17 @@ resource "aws_lambda_function" "auth_callback" {
   role             = data.aws_iam_role.lab_role.arn
   handler          = "index.handler"
   source_code_hash = data.archive_file.lambdas["auth-callback"].output_base64sha256
-  runtime          = "nodejs20.x"
+  runtime          = var.lambda_node_runtime
   timeout          = 30
   memory_size      = 256
 
   environment {
     variables = {
-      COGNITO_CLIENT_ID     = aws_cognito_user_pool_client.main.id
-      COGNITO_CLIENT_SECRET = aws_cognito_user_pool_client.main.client_secret
-      COGNITO_DOMAIN        = "https://${aws_cognito_user_pool_domain.main.domain}.auth.${var.aws_region}.amazoncognito.com"
-      FRONTEND_URL          = "http://${aws_s3_bucket_website_configuration.frontend.website_endpoint}"
+      COGNITO_CLIENT_ID        = aws_cognito_user_pool_client.main.id
+      COGNITO_CLIENT_SECRET_ID = aws_secretsmanager_secret.cognito_client_secret.id
+      COGNITO_DOMAIN           = "https://${aws_cognito_user_pool_domain.main.domain}.auth.${var.aws_region}.amazoncognito.com"
+      FRONTEND_URL             = "http://${aws_s3_bucket_website_configuration.frontend.website_endpoint}"
     }
   }
 }
 
-output "auth_user_pool_id" {
-  value = aws_cognito_user_pool.main.id
-}
-
-output "auth_client_id" {
-  value = aws_cognito_user_pool_client.main.id
-}
-
-output "auth_cognito_domain" {
-  value = aws_cognito_user_pool_domain.main.domain
-}
-
-output "auth_api_gateway_endpoint" {
-  value = aws_apigatewayv2_api.simulations_api.api_endpoint
-}

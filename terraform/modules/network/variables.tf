@@ -40,6 +40,7 @@ variable "security_groups_config" {
       to_port            = number
       cidr_blocks        = optional(list(string), [])
       security_group_ref = optional(string, null)
+      description        = optional(string, null)
     }))
     outbound = list(object({
       protocol           = string
@@ -47,7 +48,22 @@ variable "security_groups_config" {
       to_port            = number
       cidr_blocks        = optional(list(string), [])
       security_group_ref = optional(string, null)
+      description        = optional(string, null)
     }))
+  }))
+  default = []
+}
+
+variable "vpc_endpoints_config" {
+  description = "VPC endpoints to attach to the VPC. For Gateway type, fill route_tables. For Interface type, fill subnets and optionally security_group_refs / private_dns_enabled."
+  type = list(object({
+    name                = string
+    service             = string
+    type                = string
+    route_tables        = optional(list(string), [])
+    subnets             = optional(list(string), [])
+    security_group_refs = optional(list(string), [])
+    private_dns_enabled = optional(bool, false)
   }))
   default = []
 }
