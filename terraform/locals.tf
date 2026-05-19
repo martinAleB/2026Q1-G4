@@ -191,7 +191,7 @@ locals {
       { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" }
     ]
     "portfolio-get" = [
-      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" }
     ]
     "portfolio-updater" = [
       { principal = "events.amazonaws.com", source_arn = aws_cloudwatch_event_rule.portfolio_updater.arn }
