@@ -1,8 +1,12 @@
-# cloud-presti
+# Cloud Presti — Guía de ejecución
+
+Guía para desplegar la plataforma sobre AWS Academy y operarla desde el dashboard.
+
+## Acerca del proyecto
 
 Plataforma fintech que sugiere potenciales clientes a entidades financieras mediante un motor de scoring crediticio basado en datos del BCRA. Proyecto académico para la materia Cloud Computing (ITBA).
 
-## Arquitectura
+### Arquitectura general
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -22,7 +26,7 @@ Plataforma fintech que sugiere potenciales clientes a entidades financieras medi
 └─────────────────┘
 ```
 
-## Estructura del repositorio
+### Estructura del repositorio
 
 ```
 cloud-presti/
@@ -31,177 +35,311 @@ cloud-presti/
 ├── terraform/       # Infraestructura AWS con Terraform
 │   └── modules/
 │       └── network/ # Módulo reutilizable de VPC
-├── backend/         # (en desarrollo)
+├── backend/         # Lambdas Node.js + engine Python (SQS consumer)
 └── .github/
-    └── workflows/
-        └── terraform.yml  # CI/CD de infraestructura
+    └── workflows/   # CI/CD de infraestructura y frontend
 ```
 
-## Cómo funciona el scoring
+### Cómo funciona el scoring
 
-1. **Fuente de datos**: archivos del BCRA (`deudores.txt` + `24DSF.txt`)
+1. **Fuente de datos**: archivos del BCRA (`deudores.txt` + `24DSF.txt`).
 2. **Features**: ~23 variables por CUIT — situación actual, días de atraso, ratios de cobertura, tendencia a 24 meses, etc.
-3. **Modelo**: MLP (TensorFlow/Keras) → `Input → Dense(16, relu) → Dense(1, sigmoid)`
-4. **Score**: valor continuo entre `0.0` (irrecuperable) y `1.0` (excelente)
-5. **Recomendación**: el dashboard muestra productos financieros elegibles según el score de cada cliente
+3. **Modelo**: MLP (TensorFlow/Keras) → `Input → Dense(16, relu) → Dense(1, sigmoid)`.
+4. **Score**: valor continuo entre `0.0` (irrecuperable) y `1.0` (excelente).
+5. **Recomendación**: el dashboard muestra productos financieros elegibles según el score de cada cliente.
 
-Ver [`engine/README.md`](engine/README.md) para documentación detallada del pipeline.
+Ver [`engine/README.md`](engine/README.md) para documentación detallada del pipeline de entrenamiento.
 
----
+## 1. Descripción de módulos
 
-## Infraestructura (Terraform)
+La infraestructura se organiza en un módulo interno y un módulo público reutilizable, además de la raíz que actúa como composición.
 
-La infraestructura vive en `terraform/` y se despliega sobre AWS con Terraform >= 1.9.
+### 1.1 Módulo raíz (`terraform/`)
 
-### Recursos actuales
+Compone el resto: declara la VPC mediante el módulo `network`, las cuatro tablas DynamoDB, la cola SQS, el conjunto de Lambdas, el HTTP API de API Gateway, el User Pool de Cognito y el bucket S3 del frontend. Centraliza en `locals.tf` los catálogos de Lambdas, integraciones y rutas para evitar duplicación de código.
 
-| Recurso         | Descripción                                                                         |
-| --------------- | ----------------------------------------------------------------------------------- |
-| `aws_s3_bucket` | Hosting estático del frontend                                                       |
-| VPC module      | VPC con subnets públicas/privadas, NAT Gateways, Internet Gateway y Security Groups |
+### 1.2 Módulo `network` (`terraform/modules/network/`)
 
-### Getting started (local)
+Módulo interno que encapsula la creación de la VPC y su plano de red. Es declarativo: recibe listas de configuración (`vpc_config`, `subnets_config`, `route_tables_config`, `security_groups_config`) y materializa los recursos correspondientes.
 
-#### Requisitos
+**Inputs principales:**
 
-- [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.9
-- [AWS CLI](https://aws.amazon.com/cli/) configurado con credenciales válidas
-- Node.js 20+ (para el build del frontend)
+| Input | Tipo | Descripción |
+|---|---|---|
+| `vpc_config` | `object` | Nombre, CIDR y región de la VPC |
+| `subnets_config` | `list(object)` | Subnets con AZ y flag `nat_gateway` |
+| `route_tables_config` | `list(object)` | Route tables con sus rutas y subnets asociadas |
+| `security_groups_config` | `list(object)` | Security groups con reglas inbound/outbound |
 
-#### 1. Crear el bucket de Terraform state (una sola vez)
+**Outputs:** `vpc_id`, `subnet_ids` (mapa CIDR→ID), `route_table_ids` (mapa nombre→ID), `security_group_ids` (mapa nombre→ID), `nat_gateway_ids`.
 
-```bash
-aws s3api create-bucket \
-  --bucket <tu-bucket-de-state> \
-  --region us-east-1
+**Recursos creados:** `aws_vpc`, `aws_subnet`, `aws_internet_gateway`, `aws_eip`, `aws_nat_gateway`, `aws_route_table`, `aws_route`, `aws_route_table_association`, `aws_security_group`, `aws_security_group_rule`.
 
-aws s3api put-bucket-versioning \
-  --bucket <tu-bucket-de-state> \
-  --versioning-configuration Status=Enabled
-```
+### 1.3 Módulo público `terraform-aws-modules/dynamodb-table/aws` v4.4.0
 
-#### 2. Construir el frontend
+Módulo del registry oficial, instanciado cuatro veces para crear las tablas `cloud-presti-simulations`, `cloud-presti-fintech`, `cloud-presti-producto` y `cloud-presti-usuario`. Todas usan `billing_mode = PAY_PER_REQUEST` y partition key `sub` (claim del JWT de Cognito) para aislamiento por tenant.
 
-```bash
-cd frontend
-npm ci
-npm run build
-cd ..
-```
+### 1.4 Módulo de bootstrap (`terraform-bootstrap/`)
 
-#### 3. Inicializar Terraform con tu bucket de state
+Stack independiente que crea el bucket S3 del state remoto (versionado y cifrado con SSE-S3) y la tabla DynamoDB de locking. Se aplica una sola vez por entorno, antes de cualquier `terraform apply` sobre el stack principal.
 
-```bash
-cd terraform
-terraform init \
-  -backend-config="bucket=<tu-bucket-de-state>" \
-  -backend-config="key=terraform.tfstate" \
-  -backend-config="region=us-east-1"
-```
+## 2. Explicación de funciones y meta-argumentos
 
-#### 4. Aplicar
+### 2.1 Meta-argumentos
 
-```bash
-terraform plan -var="bucket_name=<tu-bucket-de-frontend>"
-terraform apply -var="bucket_name=<tu-bucket-de-frontend>"
-```
+| Meta-argumento | Uso en el proyecto |
+|---|---|
+| `for_each` | Instancia múltiples recursos del mismo tipo desde un mapa. Se usa para declarar las 11 Lambdas genéricas, sus permisos, los event source mappings, las integraciones y rutas del HTTP API, las subnets, route tables y security groups del módulo `network` |
+| `dynamic` | Bloque condicional para argumentos anidados. En `aws_lambda_function` envuelve `vpc_config` para inyectarlo solo cuando `each.value.in_vpc == true` |
+| `lifecycle` + `precondition` | Validaciones tempranas en `aws_route` del módulo `network`: garantizan que una ruta `target = "nat"` solo se declare si todas las subnets de la route table están en la misma AZ y existe un NAT Gateway en esa AZ |
+| `depends_on` | Orden explícito en `terraform_data.build_frontend` para asegurar que Cognito, API Gateway y el bucket S3 estén listos antes de compilar el frontend |
+| `count` | No se utiliza; toda iteración pasa por `for_each` para mantener identidades estables por clave |
 
----
+### 2.2 Funciones
 
-## CI/CD (GitHub Actions)
+| Función | Uso en el proyecto |
+|---|---|
+| `flatten()` | Aplana listas anidadas para alimentar `for_each`. Se usa en `locals.tf` (permisos y event sources) y en el módulo `network` (rutas y reglas de SG) |
+| `for ... in ...` | Expresiones para construir mapas y listas a partir de las listas de configuración del módulo `network` |
+| `jsonencode()` | Serializa la bucket policy del frontend a JSON en `frontend.tf` |
+| `filemd5()` | Genera el hash del script `build-frontend.sh` y lo incluye en `triggers_replace` de `terraform_data` para que un cambio en el script fuerce el rebuild |
+| `length()` | Validaciones de cantidad en preconditions y en reglas de SG |
+| `contains()` | Verifica pertenencia a un conjunto en preconditions y en la resolución de referencias entre SGs por nombre |
+| `keys()` | Extrae las claves de un mapa para validar contra ellas en preconditions |
+| `distinct()` | Elimina duplicados al calcular las AZs únicas de una route table |
+| `toset()` | Convierte la lista de nombres de SG en un set para chequeos de pertenencia |
 
-El workflow `.github/workflows/terraform.yml` automatiza el despliegue de infraestructura.
+### 2.3 Otros recursos relevantes
 
-### Comportamiento
+- **`data "archive_file"`**: empaqueta el código fuente de cada Lambda en un ZIP durante el plan/apply. El `source_code_hash` se calcula automáticamente, por lo que un cambio en el código dispara el redeploy de la Lambda.
+- **`data "aws_iam_role" "lab_role"`**: referencia al rol preexistente `LabRole` de AWS Academy, único IAM role disponible en el entorno del lab.
+- **`terraform_data`**: recurso utilizado para ejecutar el provisioner `local-exec` que compila y sincroniza el frontend, con `triggers_replace` que detectan cambios en los outputs relevantes.
 
-| Evento                                                | Acción                                                              |
-| ----------------------------------------------------- | ------------------------------------------------------------------- |
-| Push a `main` (cambios en `terraform/` o `frontend/`) | Build frontend → `terraform plan` → `terraform apply`               |
-| PR a `main` (cambios en `terraform/` o `frontend/`)   | Build frontend → `terraform plan` (solo muestra cambios, no aplica) |
+## 3. Requisitos
 
-### Cómo correr el pipeline desde cero
+- Cuenta AWS Academy Learner Lab con sesión activa (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`). Las credenciales vencen cada 4–12 h.
+- Fork del repositorio `cloud-presti` en GitHub.
+- Para despliegue local: Terraform ≥ 1.9, AWS CLI v2, Node.js ≥ 20, `uv`, `bash`.
 
-Estos pasos se hacen una sola vez al configurar el repo. Cada integrante usa sus propias credenciales y buckets.
+## 4. Configuración inicial en GitHub
 
-#### 1. Crear el bucket de Terraform state
+En **Settings → Secrets and variables → Actions** del fork:
 
-El state de Terraform se guarda en S3 para que sea compartido entre máquinas y runs del pipeline. Este bucket hay que crearlo **manualmente antes** de correr el pipeline por primera vez (Terraform no puede crearse su propio backend).
+**Secrets** (se renuevan en cada sesión del lab):
 
-Con las credenciales del lab configuradas localmente:
+| Secret | Origen |
+|---|---|
+| `AWS_ACCESS_KEY_ID` | AWS Academy → Start Lab → AWS Details → AWS CLI |
+| `AWS_SECRET_ACCESS_KEY` | ídem |
+| `AWS_SESSION_TOKEN` | ídem |
 
-```bash
-aws s3api create-bucket \
-  --bucket <nombre-unico-para-tu-state> \
-  --region us-east-1
-```
+**Variables** (única vez):
 
-> Los nombres de buckets son globales en AWS. Usá algo único, por ejemplo `cloud-presti-tfstate-tuapellido`.
+| Variable | Descripción |
+|---|---|
+| `TF_STATE_BUCKET` | Bucket S3 del state remoto de Terraform |
+| `TF_LOCK_TABLE` | Tabla DynamoDB de state locking |
+| `TF_FRONTEND_BUCKET_NAME` | Bucket S3 del sitio estático (nombre único global) |
 
-#### 2. Configurar Secrets y Variables en GitHub
+## 5. Despliegue por GitHub Actions (recomendado)
 
-En tu repositorio: **Settings → Secrets and variables → Actions**
+### 5.1 Bootstrap
 
-**Secrets** (pestaña "Secrets") — se renuevan con cada sesión del lab:
+Crea el bucket de state y la tabla de lock. Se ejecuta una sola vez por entorno.
 
-| Secret                  | Dónde conseguirlo                                   |
-| ----------------------- | --------------------------------------------------- |
-| `AWS_ACCESS_KEY_ID`     | AWS Academy → Start Lab → "AWS Details" → "AWS CLI" |
-| `AWS_SECRET_ACCESS_KEY` | ídem                                                |
-| `AWS_SESSION_TOKEN`     | ídem                                                |
+1. **Actions → Bootstrap Apply → Run workflow**.
+2. Esperar que termine en verde.
 
-**Variables** (pestaña "Variables") — se configuran una sola vez:
+### 5.2 Apply
 
-| Variable                  | Valor                                                                                                                |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `TF_STATE_BUCKET`         | El nombre del bucket que creaste en el paso 1                                                                        |
-| `TF_FRONTEND_BUCKET_NAME` | Nombre del bucket donde se va a hostear el frontend (también debe ser único, ej: `cloud-presti-frontend-tuapellido`) |
+1. Verificar que los tres Secrets de AWS estén vigentes.
+2. **Actions → Terraform Apply → Run workflow**.
 
-#### 3. Triggerear el pipeline
+El workflow encadena dos jobs:
 
-Cualquier push a `main` que toque archivos en `terraform/` o `frontend/` dispara el pipeline. Si no tenés cambios pendientes:
+- `infrastructure`: instala dependencias de las Lambdas, inicializa el backend remoto, valida, planea y aplica la infra completa (VPC, Cognito, API Gateway, Lambdas, DynamoDB, SQS, S3, VPC endpoints), y captura los outputs.
+- `frontend`: genera `.env.production` con los outputs reales, compila el SPA y sincroniza `dist/` al bucket S3.
 
-```bash
-git commit --allow-empty -m "ci: trigger pipeline"
-git push origin main
-```
+Al finalizar, el output `website_endpoint` contiene la URL pública del frontend.
 
-El progreso se ve en **Actions** del repositorio. Al finalizar, el step **Terraform Apply** muestra el output `website_endpoint` con la URL del frontend.
+### 5.3 Reaplicar
 
-#### Credenciales vencidas
+Cualquier cambio en `terraform/`, `backend/` o `frontend/` se propaga reejecutando **Terraform Apply**.
 
-Las credenciales de AWS Academy vencen cada 4–12 horas. Si el pipeline falla con error de autenticación, actualizá los tres Secrets (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`) con los valores nuevos de la consola del lab y volvé a correr el pipeline.
+## 6. Despliegue local (alternativo)
 
-#### Destruir la infraestructura
+Asume que el bootstrap ya corrió, o que se ejecutará localmente en el paso 6.2.
 
-Para no generar costos cuando no se usa:
+### 6.1 Variables de entorno
 
 ```bash
 export AWS_ACCESS_KEY_ID=...
 export AWS_SECRET_ACCESS_KEY=...
 export AWS_SESSION_TOKEN=...
+export AWS_DEFAULT_REGION=us-east-1
 
-cd terraform
-
-terraform init \
-  -backend-config="bucket=<tu-bucket-de-state>" \
-  -backend-config="key=terraform.tfstate" \
-  -backend-config="region=us-east-1"
-
-terraform destroy
+export TF_STATE_BUCKET=...
+export TF_LOCK_TABLE=...
+export TF_FRONTEND_BUCKET_NAME=...
+export TF_VAR_bucket_name=$TF_FRONTEND_BUCKET_NAME
 ```
 
-Después eliminar el bucket de state (Terraform no se destruye a sí mismo):
+### 6.2 Bootstrap (solo la primera vez)
 
 ```bash
-aws s3 rb s3://<tu-bucket-de-state> --force
+bash scripts/bootstrap.sh
 ```
 
----
+### 6.3 Apply
 
-## Módulo de red (network)
+```bash
+bash scripts/deploy.sh
+```
 
-Módulo Terraform reutilizable que crea una VPC completa. Ver [`terraform/modules/network/README.md`](terraform/modules/network/README.md) para documentación de variables, outputs y ejemplos de uso.
+`deploy.sh` orquesta:
 
-## Engine de scoring
+1. Instalación de dependencias de las Lambdas Node y empaquetado del engine Python contra `manylinux_2_28`.
+2. `terraform init` contra el backend remoto.
+3. `terraform apply -auto-approve`.
+4. Build del frontend con los outputs de Terraform y `aws s3 sync` al bucket.
+5. Impresión del `website_endpoint` final.
 
-Pipeline de preprocessing y entrenamiento del modelo crediticio. Ver [`engine/README.md`](engine/README.md).
+## 7. Verificación post-deploy
+
+Recursos esperados en la cuenta AWS:
+
+- VPC `10.0.0.0/16` con 4 subnets, 2 NAT Gateways e IGW.
+- 12 Lambdas con prefijo `cloud-presti-`.
+- 4 tablas DynamoDB: `simulations`, `fintech`, `producto`, `usuario`.
+- 1 cola SQS `cloud-presti-simulations-queue`.
+- 1 HTTP API en API Gateway v2.
+- 1 User Pool de Cognito con dominio Hosted UI.
+- 1 bucket S3 con static website hosting.
+
+Smoke tests:
+
+```bash
+curl -I "$(terraform -chdir=terraform output -raw website_endpoint)"
+curl -i "$(terraform -chdir=terraform output -raw simulations_api_endpoint)/callback"
+```
+
+## 8. Uso de la aplicación
+
+### 8.1 Registro
+
+1. Abrir la URL del `website_endpoint` y seleccionar **Crear cuenta**.
+2. Completar email y contraseña (mínimo 8 caracteres, con mayúscula, minúscula y número). El frontend redirige a la Hosted UI de Cognito.
+3. Confirmar el email con el código recibido.
+4. El trigger `fintech-post-confirmation` crea automáticamente la fila inicial en `cloud-presti-fintech` con los parámetros generales por defecto.
+5. Cognito redirige al callback del API Gateway; los JWT quedan disponibles en el frontend para autenticar las siguientes requests.
+
+### 8.2 Configuración de parámetros generales
+
+En **Parámetros**, definir el filtro previo al scoring. Los valores por defecto al momento del registro son:
+
+| Parámetro | Default |
+|---|---|
+| `max_situacion_crediticia` | 2 |
+| `max_entidades_con_deuda` | 3 |
+| `max_deuda_total_ars` | 350000 |
+| `min_meses_situacion_1` | 6 |
+| `max_dias_atraso` | 30 |
+| `permite_proceso_judicial` | false |
+
+Cada cambio se persiste vía `PUT /fintech` en la tabla `cloud-presti-fintech`. Los clientes que no superan estos umbrales son rechazados antes de ejecutar inferencia.
+
+### 8.3 Alta de productos
+
+En **Productos → Nuevo producto**, completar:
+
+- Nombre comercial, monto, cuotas, tasa de interés.
+- `min_score` y `max_score`: rango de score elegible (escala 0–10).
+- `prioridad`: peso comercial 1–10, usado para ordenar las recomendaciones.
+
+Se recomienda definir al menos dos productos con rangos solapados y prioridades distintas para validar el ranking.
+
+### 8.4 Ejecución de una simulación
+
+En **Simulaciones → Nueva simulación**, ingresar un CUIT.
+
+Flujo:
+
+1. `POST /simulations` (Lambda `simulations-handler`): registra el CUIT, crea la fila en `cloud-presti-simulations` con `status = PROCESSING` y un `task_id`, y encola el mensaje en SQS. Responde `202 Accepted`.
+2. `simulations-engine` (Python, event source SQS): consulta el BCRA, deriva las features, aplica el filtro de la fintech y ejecuta inferencia TFLite.
+3. El estado final se persiste en la misma fila de DynamoDB.
+
+Estados posibles:
+
+| Status | Significado |
+|---|---|
+| `PROCESSING` | En la cola o en procesamiento |
+| `COMPLETED` | Score calculado (`score ∈ [0,1]`) |
+| `REJECTED` | No superó el filtro de parámetros generales (`rejection_reasons`) |
+| `FAILED` | Error definitivo tras reintentos (`error_message`) |
+
+Ante fallos transitorios, el engine reencola con back-off (60/120/240/480 s).
+
+### 8.5 Consulta de recomendaciones
+
+Al abrir el detalle de una simulación `COMPLETED`, el frontend invoca `GET /recomendaciones?task_id=<id>`. La Lambda `recommendations-get`:
+
+1. Lee la simulación y los productos de la fintech autenticada.
+2. Escala el score a `[0, 10]`.
+3. Devuelve dos listas:
+   - `elegibles`: productos cuyo rango `[min_score, max_score]` contiene al score, ordenados por `prioridad DESC`.
+   - `no_elegibles`: el resto, con un `motivo` que indica si el score quedó por debajo o por encima del rango.
+
+## 9. Teardown
+
+**Vía GitHub Actions**: **Actions → Terraform Destroy → Run workflow**, tipear `destroy` en el campo de confirmación. Vacía el bucket del frontend y ejecuta `terraform destroy`. El state y la tabla de lock permanecen.
+
+**Vía local**:
+
+```bash
+bash scripts/destroy.sh
+```
+
+Para eliminar también el bootstrap:
+
+```bash
+bash scripts/destroy-bootstrap.sh
+```
+
+## 10. Troubleshooting
+
+| Síntoma | Causa probable | Acción |
+|---|---|---|
+| `ExpiredToken` / `InvalidClientTokenId` | Credenciales del lab vencidas | Regenerar en AWS Academy y actualizar Secrets/exports |
+| `terraform apply` colgado | Lock activo de otra ejecución | Esperar; si quedó huérfano, borrar el ítem en `TF_LOCK_TABLE` |
+| Simulación en `PROCESSING` indefinido | Error en `simulations-engine` | Revisar CloudWatch Logs del Lambda |
+| Simulación `FAILED` con HTTP 404 | CUIT sin historial BCRA | Esperado; probar con otro CUIT |
+| Frontend devuelve 404 en rutas internas | Falta sync del bundle a S3 | Reejecutar el job `frontend` o `scripts/deploy.sh` |
+| CORS bloquea el llamado al API | Header `Authorization` ausente | Verificar que el frontend esté enviando el JWT |
+
+## Anexo — Comandos rápidos
+
+```bash
+# Despliegue inicial local
+bash scripts/bootstrap.sh
+bash scripts/deploy.sh
+
+# Reaplicar
+bash scripts/deploy.sh
+
+# Refresh solo del frontend
+bash scripts/build-frontend.sh \
+  "$(terraform -chdir=terraform output -raw auth_cognito_domain)" \
+  "$(terraform -chdir=terraform output -raw auth_client_id)" \
+  "$(terraform -chdir=terraform output -raw auth_api_gateway_endpoint)" \
+  "$(terraform -chdir=terraform output -raw simulations_api_endpoint)" \
+  "./frontend" \
+  "$(terraform -chdir=terraform output -raw bucket_name)"
+
+# Teardown
+bash scripts/destroy.sh
+```
+
+## Documentación adicional
+
+- [`engine/README.md`](engine/README.md) — pipeline de preprocessing y entrenamiento del modelo crediticio.
+- [`terraform/modules/network/README.md`](terraform/modules/network/README.md) — variables, outputs y ejemplos de uso del módulo `network`.
