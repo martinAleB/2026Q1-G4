@@ -18,6 +18,7 @@ Requiere Terraform >= 1.3 y AWS provider ~> 6.42.
 | `aws_route` | Una ruta por cada entrada en `routes`, mas rutas implicitas al IGW |
 | `aws_route_table_association` | Asociacion entre subnets y route tables |
 | `aws_security_group` + `aws_security_group_rule` | Un SG con sus reglas por cada elemento en `security_groups_config` |
+| `aws_vpc_endpoint` | Un endpoint (Gateway o Interface) por cada elemento en `vpc_endpoints_config` |
 
 ---
 
@@ -98,6 +99,48 @@ Lista de security groups a crear.
 
 ---
 
+### `vpc_endpoints_config` (opcional, default: `[]`)
+
+Lista de VPC endpoints a crear y asociar a la VPC. Soporta los dos tipos: Gateway (DynamoDB, S3) e Interface (SQS, Secrets Manager, etc).
+
+| Campo | Tipo | Default | Descripcion |
+|---|---|---|---|
+| `name` | `string` | — | Nombre logico del endpoint (se usa como tag y como key en el output `vpc_endpoint_ids`). |
+| `service` | `string` | — | Nombre completo del servicio AWS (ej: `"com.amazonaws.us-east-1.sqs"`). |
+| `type` | `string` | — | `"Gateway"` o `"Interface"`. |
+| `route_tables` | `list(string)` | `[]` | **Solo Gateway**. Lista de nombres de route tables (de `route_tables_config`) a las que se agrega la ruta al endpoint. Requerido para Gateway. |
+| `subnets` | `list(string)` | `[]` | **Solo Interface**. Lista de CIDRs (de `subnets_config`) donde se crean las ENIs. Requerido para Interface. |
+| `security_group_refs` | `list(string)` | `[]` | **Solo Interface**. Lista de nombres de SGs (de `security_groups_config`) que se aplican a las ENIs. |
+| `private_dns_enabled` | `bool` | `false` | **Solo Interface**. Si es `true`, el endpoint registra el DNS privado del servicio. |
+
+Validaciones (preconditions):
+- `type` debe ser exactamente `"Gateway"` o `"Interface"`.
+- Si `type = "Gateway"`, `route_tables` no puede estar vacio.
+- Si `type = "Interface"`, `subnets` no puede estar vacio.
+
+Ejemplo:
+
+```hcl
+vpc_endpoints_config = [
+  {
+    name         = "dynamodb"
+    service      = "com.amazonaws.us-east-1.dynamodb"
+    type         = "Gateway"
+    route_tables = ["private-rt-1a", "private-rt-1b"]
+  },
+  {
+    name                = "sqs"
+    service             = "com.amazonaws.us-east-1.sqs"
+    type                = "Interface"
+    subnets             = ["10.0.3.0/24", "10.0.4.0/24"]
+    security_group_refs = ["interface-endpoints-sg"]
+    private_dns_enabled = true
+  },
+]
+```
+
+---
+
 ## Outputs
 
 | Output | Tipo | Descripcion |
@@ -107,6 +150,7 @@ Lista de security groups a crear.
 | `nat_gateway_ids` | `map(string)` | Mapa de `cidr_block => nat_gateway_id` |
 | `route_table_ids` | `map(string)` | Mapa de `name => route_table_id` |
 | `security_group_ids` | `map(string)` | Mapa de `name => security_group_id` |
+| `vpc_endpoint_ids` | `map(string)` | Mapa de `name => vpc_endpoint_id` |
 
 ---
 

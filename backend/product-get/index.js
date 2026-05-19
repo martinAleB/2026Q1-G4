@@ -3,7 +3,7 @@
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, QueryCommand } = require('@aws-sdk/lib-dynamodb');
 
-const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: 'us-east-1' }));
+const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const TABLE = process.env.DYNAMODB_PRODUCT_TABLE;
 
 function respond(statusCode, body) {

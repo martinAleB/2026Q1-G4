@@ -10,6 +10,16 @@ resource "aws_s3_bucket_versioning" "frontend" {
   }
 }
 
+resource "aws_s3_bucket_server_side_encryption_configuration" "frontend" {
+  bucket = aws_s3_bucket.frontend.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
 resource "aws_s3_bucket_ownership_controls" "frontend" {
   bucket = aws_s3_bucket.frontend.id
   rule {
@@ -60,21 +70,21 @@ resource "terraform_data" "build_frontend" {
   triggers_replace = {
     cognito_domain = aws_cognito_user_pool_domain.main.domain
     client_id      = aws_cognito_user_pool_client.main.id
-    api_endpoint   = aws_apigatewayv2_api.simulations_api.api_endpoint
+    api_endpoint   = aws_apigatewayv2_api.main.api_endpoint
     bucket_name    = aws_s3_bucket.frontend.id
     script_hash    = filemd5("${path.module}/../scripts/build-frontend.sh")
   }
 
   provisioner "local-exec" {
-    command     = "${path.module}/../scripts/build-frontend.sh '${self.triggers_replace.cognito_domain}' '${self.triggers_replace.client_id}' '${self.triggers_replace.api_endpoint}' '${self.triggers_replace.api_endpoint}' '${path.module}/../frontend' '${self.triggers_replace.bucket_name}'"
+    command     = "${path.module}/../scripts/build-frontend.sh '${self.triggers_replace.cognito_domain}' '${self.triggers_replace.client_id}' '${self.triggers_replace.api_endpoint}' '${path.module}/../frontend' '${self.triggers_replace.bucket_name}'"
     working_dir = path.module
   }
 
   depends_on = [
     aws_cognito_user_pool_domain.main,
     aws_cognito_user_pool_client.main,
-    aws_apigatewayv2_api.simulations_api,
-    aws_apigatewayv2_stage.simulations_stage,
+    aws_apigatewayv2_api.main,
+    aws_apigatewayv2_stage.main,
     aws_apigatewayv2_route.routes["callback"],
     aws_apigatewayv2_route.routes["simulations-post"],
     aws_apigatewayv2_route.routes["simulations-get"],
@@ -82,12 +92,3 @@ resource "terraform_data" "build_frontend" {
   ]
 }
 
-output "bucket_name" {
-  description = "S3 bucket name"
-  value       = aws_s3_bucket.frontend.bucket
-}
-
-output "website_endpoint" {
-  description = "HTTP URL of the static website"
-  value       = "http://${aws_s3_bucket_website_configuration.frontend.website_endpoint}"
-}

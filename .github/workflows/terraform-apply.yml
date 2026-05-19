@@ -21,9 +21,8 @@ jobs:
     outputs:
       cognito_domain: ${{ steps.tf_outputs.outputs.cognito_domain }}
       client_id: ${{ steps.tf_outputs.outputs.client_id }}
-      api_gateway_endpoint: ${{ steps.tf_outputs.outputs.api_gateway_endpoint }}
       bucket_name: ${{ steps.tf_outputs.outputs.bucket_name }}
-      simulations_api_endpoint: ${{ steps.tf_outputs.outputs.simulations_api_endpoint }}
+      api_endpoint: ${{ steps.tf_outputs.outputs.api_endpoint }}
 
     steps:
       - name: Checkout
@@ -68,9 +67,8 @@ jobs:
         run: |
           echo "cognito_domain=$(terraform output -raw auth_cognito_domain)" >> $GITHUB_OUTPUT
           echo "client_id=$(terraform output -raw auth_client_id)" >> $GITHUB_OUTPUT
-          echo "api_gateway_endpoint=$(terraform output -raw auth_api_gateway_endpoint)" >> $GITHUB_OUTPUT
           echo "bucket_name=$(terraform output -raw bucket_name)" >> $GITHUB_OUTPUT
-          echo "simulations_api_endpoint=$(terraform output -raw simulations_api_endpoint)" >> $GITHUB_OUTPUT
+          echo "api_endpoint=$(terraform output -raw api_endpoint)" >> $GITHUB_OUTPUT
 
   frontend:
     name: Frontend
@@ -101,8 +99,8 @@ jobs:
           cat > .env.production << EOF
           VITE_COGNITO_DOMAIN=https://${{ needs.infrastructure.outputs.cognito_domain }}.auth.us-east-1.amazoncognito.com
           VITE_COGNITO_CLIENT_ID=${{ needs.infrastructure.outputs.client_id }}
-          VITE_API_GATEWAY_CALLBACK_URL=${{ needs.infrastructure.outputs.api_gateway_endpoint }}/callback
-          VITE_SIMULATIONS_API_URL=${{ needs.infrastructure.outputs.simulations_api_endpoint }}
+          VITE_API_GATEWAY_CALLBACK_URL=${{ needs.infrastructure.outputs.api_endpoint }}/callback
+          VITE_SIMULATIONS_API_URL=${{ needs.infrastructure.outputs.api_endpoint }}
           EOF
 
       - name: Install dependencies

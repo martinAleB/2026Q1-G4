@@ -11,6 +11,7 @@ locals {
         to_port            = rule.to_port
         cidr_blocks        = rule.cidr_blocks
         security_group_ref = rule.security_group_ref
+        description        = rule.description
       }
     ]
   ])
@@ -25,6 +26,7 @@ locals {
         to_port            = rule.to_port
         cidr_blocks        = rule.cidr_blocks
         security_group_ref = rule.security_group_ref
+        description        = rule.description
       }
     ]
   ])
@@ -49,6 +51,7 @@ resource "aws_security_group_rule" "ingress" {
   protocol          = each.value.protocol
   from_port         = each.value.from_port
   to_port           = each.value.to_port
+  description       = each.value.description
 
   cidr_blocks = length(each.value.cidr_blocks) > 0 ? each.value.cidr_blocks : null
 
@@ -67,6 +70,7 @@ resource "aws_security_group_rule" "egress" {
   protocol          = each.value.protocol
   from_port         = each.value.from_port
   to_port           = each.value.to_port
+  description       = each.value.description
 
   cidr_blocks = length(each.value.cidr_blocks) > 0 ? each.value.cidr_blocks : null
 

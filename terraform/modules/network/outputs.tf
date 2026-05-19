@@ -22,3 +22,8 @@ output "security_group_ids" {
   description = "Map from name to security group ID"
   value       = { for name, sg in aws_security_group.sg : name => sg.id }
 }
+
+output "vpc_endpoint_ids" {
+  description = "Map from VPC endpoint name to its ID"
+  value       = { for name, ep in aws_vpc_endpoint.endpoint : name => ep.id }
+}

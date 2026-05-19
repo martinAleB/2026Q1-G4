@@ -1,6 +1,25 @@
+const { SecretsManagerClient, GetSecretValueCommand } = require('@aws-sdk/client-secrets-manager');
+
+const secretsClient = new SecretsManagerClient({});
+
+// Cached at module scope so warm invocations reuse the same secret without hitting Secrets Manager again.
+let cachedClientSecret = null;
+
+async function getClientSecret() {
+    if (cachedClientSecret) return cachedClientSecret;
+
+    const secretId = process.env.COGNITO_CLIENT_SECRET_ID;
+    if (!secretId) throw new Error("COGNITO_CLIENT_SECRET_ID env var is not set");
+
+    const { SecretString } = await secretsClient.send(
+        new GetSecretValueCommand({ SecretId: secretId })
+    );
+    cachedClientSecret = SecretString;
+    return cachedClientSecret;
+}
+
 exports.handler = async (event) => {
     const clientId = process.env.COGNITO_CLIENT_ID;
-    const clientSecret = process.env.COGNITO_CLIENT_SECRET;
     const cognitoDomain = process.env.COGNITO_DOMAIN;
     const frontendUrl = process.env.FRONTEND_URL;
     const apiGatewayUrl = `https://${event.headers.host}${event.requestContext.http.path}`;
@@ -15,6 +34,7 @@ exports.handler = async (event) => {
     }
 
     try {
+        const clientSecret = await getClientSecret();
         const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
         const authHeader = `Basic ${credentials}`;
         const tokenEndpoint = `${cognitoDomain}/oauth2/token`;

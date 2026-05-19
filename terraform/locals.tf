@@ -17,7 +17,7 @@ locals {
   lambda_configs = {
     "fintech-post-confirmation" = {
       handler     = "index.handler"
-      runtime     = "nodejs20.x"
+      runtime     = var.lambda_node_runtime
       timeout     = 30
       memory_size = 256
       in_vpc      = true
@@ -27,7 +27,7 @@ locals {
     }
     "fintech-get" = {
       handler     = "index.handler"
-      runtime     = "nodejs20.x"
+      runtime     = var.lambda_node_runtime
       timeout     = 30
       memory_size = 256
       in_vpc      = true
@@ -37,7 +37,7 @@ locals {
     }
     "fintech-update" = {
       handler     = "index.handler"
-      runtime     = "nodejs20.x"
+      runtime     = var.lambda_node_runtime
       timeout     = 30
       memory_size = 256
       in_vpc      = true
@@ -47,7 +47,7 @@ locals {
     }
     "product-get" = {
       handler     = "index.handler"
-      runtime     = "nodejs20.x"
+      runtime     = var.lambda_node_runtime
       timeout     = 30
       memory_size = 256
       in_vpc      = true
@@ -57,7 +57,7 @@ locals {
     }
     "product-create" = {
       handler     = "index.handler"
-      runtime     = "nodejs20.x"
+      runtime     = var.lambda_node_runtime
       timeout     = 30
       memory_size = 256
       in_vpc      = true
@@ -67,7 +67,7 @@ locals {
     }
     "product-update" = {
       handler     = "index.handler"
-      runtime     = "nodejs20.x"
+      runtime     = var.lambda_node_runtime
       timeout     = 30
       memory_size = 256
       in_vpc      = true
@@ -77,7 +77,7 @@ locals {
     }
     "product-delete" = {
       handler     = "index.handler"
-      runtime     = "nodejs20.x"
+      runtime     = var.lambda_node_runtime
       timeout     = 30
       memory_size = 256
       in_vpc      = true
@@ -87,19 +87,19 @@ locals {
     }
     "simulations-handler" = {
       handler     = "index.handler"
-      runtime     = "nodejs20.x"
+      runtime     = var.lambda_node_runtime
       timeout     = 30
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        SQS_QUEUE_URL       = aws_sqs_queue.simulations.url
+        SQS_QUEUE_URL       = aws_sqs_queue.main.url
         DYNAMODB_TABLE_NAME = module.dynamodb_simulations.dynamodb_table_id
         DYNAMODB_USER_TABLE = module.dynamodb_user.dynamodb_table_id
       }
     }
     "simulations-results" = {
       handler     = "index.handler"
-      runtime     = "nodejs20.x"
+      runtime     = var.lambda_node_runtime
       timeout     = 30
       memory_size = 256
       in_vpc      = true
@@ -109,19 +109,19 @@ locals {
     }
     "simulations-engine" = {
       handler     = "lambda_function.lambda_handler"
-      runtime     = "python3.12"
+      runtime     = var.lambda_python_runtime
       timeout     = 60
       memory_size = 1024
       in_vpc      = true
       env_vars = {
         DYNAMODB_TABLE_NAME    = module.dynamodb_simulations.dynamodb_table_id
         DYNAMODB_FINTECH_TABLE = module.dynamodb_fintech.dynamodb_table_id
-        SQS_QUEUE_URL          = aws_sqs_queue.simulations.url
+        SQS_QUEUE_URL          = aws_sqs_queue.main.url
       }
     }
     "recommendations-get" = {
       handler     = "index.handler"
-      runtime     = "nodejs20.x"
+      runtime     = var.lambda_node_runtime
       timeout     = 30
       memory_size = 256
       in_vpc      = true
@@ -134,43 +134,43 @@ locals {
 
   lambda_permissions = {
     "auth-callback" = [
-      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" }
     ]
     "fintech-get" = [
-      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" }
     ]
     "fintech-update" = [
-      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" }
     ]
     "fintech-post-confirmation" = [
       { principal = "cognito-idp.amazonaws.com", source_arn = aws_cognito_user_pool.main.arn }
     ]
     "product-get" = [
-      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" }
     ]
     "product-create" = [
-      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" }
     ]
     "product-update" = [
-      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" }
     ]
     "product-delete" = [
-      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" }
     ]
     "simulations-handler" = [
-      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" }
     ]
     "simulations-results" = [
-      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" }
     ]
     "recommendations-get" = [
-      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.simulations_api.execution_arn}/*/*" }
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" }
     ]
   }
 
   lambda_event_sources = {
     "simulations-engine" = [
-      { event_source_arn = aws_sqs_queue.simulations.arn, batch_size = 1 }
+      { event_source_arn = aws_sqs_queue.main.arn, batch_size = 1 }
     ]
   }
 

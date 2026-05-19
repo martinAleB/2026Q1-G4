@@ -67,7 +67,7 @@ resource "aws_lambda_function" "lambdas" {
   dynamic "vpc_config" {
     for_each = each.value.in_vpc ? [1] : []
     content {
-      subnet_ids         = [module.vpc.subnet_ids["10.0.2.0/24"], module.vpc.subnet_ids["10.0.5.0/24"]]
+      subnet_ids         = [for cidr in var.private_subnet_cidrs : module.vpc.subnet_ids[cidr]]
       security_group_ids = [module.vpc.security_group_ids["lambda-sg"]]
     }
   }
