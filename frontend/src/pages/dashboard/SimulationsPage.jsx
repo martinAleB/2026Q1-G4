@@ -179,7 +179,7 @@ function RecommendationsDialog({ open, onOpenChange, query, recommendations, isL
                 <AlertCircle className="mt-0.5 size-4 shrink-0" />
                 <div className="space-y-1">
                   <p className="font-medium">Error técnico</p>
-                  <p className="text-xs">{error_message || 'Sin detalle disponible.'}</p>
+                  <p className="text-xs">No fue posible establecer una conexión con el BCRA.</p>
                 </div>
               </div>
             </div>
