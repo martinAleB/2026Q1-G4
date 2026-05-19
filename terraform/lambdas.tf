@@ -79,8 +79,8 @@ resource "aws_lambda_function" "lambdas" {
 
 resource "aws_cloudwatch_event_rule" "portfolio_updater" {
   name                = "${var.project_name}-portfolio-updater-cron"
-  description         = "Ejecuta portfolio-updater mensualmente"
-  schedule_expression = "cron(0 10 5 * ? *)" # El dia 5 de cada mes a las 10:00 UTC
+  description         = "Executes portfolio-updater monthly"
+  schedule_expression = "cron(0 10 1 * ? *)" # El dia 1 de cada mes a las 10:00 UTC
 }
 
 resource "aws_cloudwatch_event_target" "portfolio_updater_target" {

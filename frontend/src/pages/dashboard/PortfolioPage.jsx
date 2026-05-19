@@ -169,7 +169,7 @@ export default function PortfolioPage() {
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground">Monitoreado desde</p>
-                            <p className="font-medium">{client.tracked_at ? new Date(client.tracked_at).toLocaleDateString() : '—'}</p>
+                            <p className="font-medium">{client.tracked_at ? new Date(client.tracked_at).toLocaleDateString('es-AR') : '—'}</p>
                           </div>
                         </div>
                       </div>
