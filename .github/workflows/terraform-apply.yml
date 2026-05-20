@@ -68,7 +68,7 @@ jobs:
         working-directory: terraform
 
       - name: Terraform Apply
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fixes'
         # Passing a saved plan skips the prompt automatically; -auto-approve
         # would be redundant.
         run: terraform apply tfplan
