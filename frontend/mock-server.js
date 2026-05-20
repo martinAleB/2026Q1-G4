@@ -111,5 +111,15 @@ createServer(async (req, res) => {
     return
   }
 
+
+  // POST /portfolio/refresh (mock del portfolio-updater)
+  if (req.method === 'POST' && path === '/portfolio/refresh') {
+    // Simular el tiempo de procesamiento del BCRA (~2s en mock)
+    await new Promise(resolve => setTimeout(resolve, 2000))
+    send(res, 200, { statusCode: 200, body: 'OK' })
+    return
+  }
+
   send(res, 404, { error: 'Not found' })
 }).listen(3001, () => console.log('[mock] servidor en http://localhost:3001'))
+

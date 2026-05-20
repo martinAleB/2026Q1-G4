@@ -389,7 +389,8 @@ En **Cartera** se listan los CUITs que esta fintech ya consultó alguna vez. Par
 Backend:
 
 - `GET /portfolio` (Lambda `portfolio-get`): lista los CUITs trackeados usando el GSI `gsi1` (acceso por `FINTECH#<sub>` → todos sus CUITs sin scan). Soporta búsqueda por CUIT exacto y paginación.
-- **Cron mensual** (EventBridge `cron(0 10 1 * ? *)` → Lambda `portfolio-updater`): el día 1 de cada mes a las 10:00 UTC, escanea todos los CUITs trackeados y actualiza sus estados. **Actualmente es un mock** — randomiza los estados con 20% de chance. La Lambda emite un `console.warn` al inicio explicitando que es mock. Para producción debería invocar al BCRA o reutilizar el `simulations-engine`.
+- **Cron mensual** (EventBridge `cron(0 10 1 * ? *)` → Lambda `portfolio-updater`, timeout 300s): el día 1 de cada mes a las 10:00 UTC, escanea todos los CUITs trackeados en la tabla `portfolio` y actualiza sus estados consultando la **API pública del BCRA** (`GET /centraldedeudores/v1.0/Deudas/{cuit}`). Para cada CUIT toma el período más reciente y deriva la situación como el máximo `situacion` entre todas las entidades informantes (idéntico criterio que el `simulations-engine`). Si el BCRA responde 404 el CUIT se marca como procesado para el período actual (sin actualizar la situación). Cualquier otro error HTTP/red propaga la excepción y EventBridge lo captura en el DLQ.
+- **`POST /portfolio/refresh`** (misma Lambda `portfolio-updater`, invocación sincrónica vía API Gateway, auth requerida): permite disparar la actualización manualmente desde el frontend sin esperar al cron. El botón "Actualizar cartera" de la página de Cartera llama a este endpoint y muestra feedback de progreso al usuario.
 - Si la invocación del cron falla, EventBridge reintenta (hasta 1 hora) y luego deposita el evento en el `main_dlq`. Si el handler Lambda falla por excepción, Lambda reintenta 2 veces y luego también deposita en el `main_dlq`.
 
 ---

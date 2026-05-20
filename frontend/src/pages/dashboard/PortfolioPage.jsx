@@ -6,7 +6,8 @@ import {
   Search,
   Loader2,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  RefreshCw,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -39,12 +40,15 @@ function changeIcon(type) {
 export default function PortfolioPage() {
   const [items, setItems] = useState([])
   const [nextToken, setNextToken] = useState(null)
-  const [tokenStack, setTokenStack] = useState([]) // Para poder volver atrás
+  const [tokenStack, setTokenStack] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSearching, setIsSearching] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  const [activeSearch, setActiveSearch] = useState('') // Nueva variable para saber si hay una búsqueda activa
+  const [activeSearch, setActiveSearch] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
+
+  const [refreshState, setRefreshState] = useState('idle') // 'idle' | 'running' | 'done' | 'error'
+  const [refreshMessage, setRefreshMessage] = useState('')
 
   const fetchPortfolio = useCallback(async (token = null, query = '', direction = 'next') => {
     setIsLoading(true)
@@ -66,7 +70,6 @@ export default function PortfolioPage() {
           setTokenStack(prev => prev.slice(0, -1))
           setCurrentPage(c => c - 1)
         } else if (!token) {
-          // Reset al buscar o carga inicial
           setTokenStack([])
           setCurrentPage(1)
         }
@@ -86,7 +89,7 @@ export default function PortfolioPage() {
   const handleSearch = (e) => {
     e.preventDefault()
     setIsSearching(true)
-    setActiveSearch(searchQuery) // Marcamos la búsqueda como activa solo al enviar el formulario
+    setActiveSearch(searchQuery)
     setItems([])
     fetchPortfolio(null, searchQuery)
   }
@@ -104,6 +107,34 @@ export default function PortfolioPage() {
     }
   }
 
+  const handleRefresh = async () => {
+    setRefreshState('running')
+    setRefreshMessage('')
+    try {
+      const res = await fetch(`${API}/portfolio/refresh`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      })
+      if (res.ok) {
+        setRefreshState('done')
+        setRefreshMessage('Cartera actualizada con datos del BCRA.')
+        fetchPortfolio(null, activeSearch)
+      } else {
+        const body = await res.json().catch(() => ({}))
+        setRefreshState('error')
+        setRefreshMessage(body?.message || `Error ${res.status} al actualizar la cartera.`)
+      }
+    } catch (err) {
+      setRefreshState('error')
+      setRefreshMessage('No se pudo conectar con el servidor. Intentá de nuevo.')
+    } finally {
+      setTimeout(() => {
+        setRefreshState('idle')
+        setRefreshMessage('')
+      }, 6000)
+    }
+  }
+
   return (
     <div className="space-y-8 p-8">
       <div className="flex items-center justify-between">
@@ -112,6 +143,30 @@ export default function PortfolioPage() {
           <p className="text-muted-foreground">
             Seguimiento estático de cambios en la situación crediticia de CUIT/CUILs monitoreados.
           </p>
+        </div>
+
+        {/* Botón de actualización manual */}
+        <div className="flex flex-col items-end gap-1">
+          <Button
+            id="btn-refresh-portfolio"
+            variant="outline"
+            onClick={handleRefresh}
+            disabled={refreshState === 'running'}
+            className="gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshState === 'running' ? 'animate-spin' : ''}`} />
+            {refreshState === 'running' ? 'Actualizando cartera…' : 'Actualizar cartera'}
+          </Button>
+          {refreshMessage && (
+            <p className={`text-xs ${refreshState === 'error' ? 'text-destructive' : 'text-muted-foreground'}`}>
+              {refreshMessage}
+            </p>
+          )}
+          {refreshState === 'idle' && (
+            <p className="text-xs text-muted-foreground">
+              Consulta el BCRA para todos los CUITs de la cartera.
+            </p>
+          )}
         </div>
       </div>
 

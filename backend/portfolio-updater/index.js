@@ -6,18 +6,52 @@ const docClient = DynamoDBDocumentClient.from(client);
 
 const TABLE_NAME = process.env.DYNAMODB_PORTFOLIO_TABLE;
 
+const BCRA_BASE_URL = "https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas";
+const BCRA_HEADERS = {
+    "Cache-Control": "no-cache",
+    "Accept": "*/*",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+};
+
+async function consultarBCRA(cuit) {
+    const url = `${BCRA_BASE_URL}/${cuit}`;
+    const res = await fetch(url, { headers: BCRA_HEADERS, signal: AbortSignal.timeout(15_000) });
+
+    if (res.status === 404) {
+        console.log(`CUIT ${cuit}: sin historial en BCRA (404), skipping.`);
+        return null;
+    }
+
+    if (!res.ok) {
+        throw new Error(`BCRA respondió HTTP ${res.status} para CUIT ${cuit}`);
+    }
+
+    const body = await res.json();
+    return body.results ?? null;
+}
+
+function derivarSituacion(results) {
+    const periodos = results?.periodos ?? [];
+    if (periodos.length === 0) return null;
+
+    const periodoMasReciente = periodos[0];
+    const entidades = periodoMasReciente?.entidades ?? [];
+
+    const situaciones = entidades
+        .map(e => parseInt(e.situacion, 10))
+        .filter(s => Number.isInteger(s) && s >= 1 && s <= 6);
+
+    if (situaciones.length === 0) return null;
+
+    return Math.max(...situaciones);
+}
+
 exports.handler = async (event) => {
     try {
-        console.warn("portfolio-updater is a MOCK — status transitions are randomized, no BCRA call is made");
-        console.log("Starting portfolio updater cron");
+        console.log("Iniciando portfolio-updater (BCRA real).");
 
-        // Listamos los items INFO via el sparse GSI record-type-pk-index en
-        // lugar de Scan + FilterExpression. AWS cobra RCUs por todos los
-        // items leídos antes de aplicar el filtro, así que un Scan sobre la
-        // tabla portfolio (que también contiene las filas FINTECH#<sub>)
-        // cobraba ~2x lo necesario y se volvía más caro a medida que crecía
-        // la tabla. Query sobre el sparse GSI devuelve exactamente 1 fila
-        // por CUIT trackeado, sin descartes.
         let allItems = [];
         let lastEvaluatedKey = undefined;
 
@@ -27,66 +61,71 @@ exports.handler = async (event) => {
                 IndexName: "record-type-pk-index",
                 KeyConditionExpression: "record_type = :rt",
                 ExpressionAttributeValues: { ":rt": "INFO" },
-                ExclusiveStartKey: lastEvaluatedKey
+                ExclusiveStartKey: lastEvaluatedKey,
             }));
-            if (response.Items) {
-                allItems.push(...response.Items);
-            }
+            if (response.Items) allItems.push(...response.Items);
             lastEvaluatedKey = response.LastEvaluatedKey;
         } while (lastEvaluatedKey);
 
-        console.log(`Found ${allItems.length} CUITs to update.`);
+        console.log(`Encontrados ${allItems.length} CUITs en cartera.`);
 
-        // Marca de idempotencia por mes. Si EventBridge reintenta el cron
-        // (retry_policy con maximum_retry_attempts=3) o si un timeout obligó
-        // a un reintento parcial, los items ya procesados quedan marcados con
-        // last_processed_period = YYYY-MM y se skipean en el siguiente paso.
-        // Cuando el flujo deje de ser mock, esto evita llamar dos veces a la
-        // API del BCRA por el mismo CUIT en el mismo mes (la API tiene rate
-        // limits y es lenta).
-        const currentPeriod = new Date().toISOString().slice(0, 7);
+        const currentPeriod = new Date().toISOString().slice(0, 7); // "YYYY-MM"
         let skipped = 0;
+        let updated = 0;
+        let noData = 0;
+        let errors = 0;
 
-        // 2. Iterate and update each CUIT
         for (const item of allItems) {
             if (item.last_processed_period === currentPeriod) {
                 skipped++;
                 continue;
             }
 
-            const cuit = item.pk.split('#')[1];
+            const cuit = item.pk.split("#")[1];
 
-            // Simulating fetching new data from BCRA/Motor
-            // Here we randomly decide if the status changes
-            let newStatus = item.current_status;
-            let trend = "stable";
-
-            const randomChance = Math.random();
-            if (randomChance > 0.8) {
-                // 20% chance to change status for simulation purposes
-                const statuses = ["1", "2", "3", "4", "5", "6"];
-                newStatus = statuses[Math.floor(Math.random() * statuses.length)];
-
-                if (parseInt(newStatus) > parseInt(item.current_status)) {
-                    trend = "down"; // Higher number means more risk
-                } else if (parseInt(newStatus) < parseInt(item.current_status)) {
-                    trend = "up"; // Lower number means less risk (opportunity)
-                }
+            let results;
+            try {
+                results = await consultarBCRA(cuit);
+            } catch (err) {
+                console.error(`Error consultando BCRA para CUIT ${cuit}: ${err.message}`);
+                errors++;
+                throw err;
             }
 
-            // Siempre marcamos last_processed_period (aunque no haya cambio)
-            // para que reintentos del mismo mes no reprocesen este CUIT.
-            // last_updated en cambio solo se toca cuando el status/trend
-            // realmente cambian, para que el dashboard muestre la fecha del
-            // último cambio real y no la del último corrida del cron.
+            if (results === null) {
+                noData++;
+                await docClient.send(new UpdateCommand({
+                    TableName: TABLE_NAME,
+                    Key: { pk: item.pk, sk: item.sk },
+                    UpdateExpression: "SET last_processed_period = :p",
+                    ExpressionAttributeValues: { ":p": currentPeriod },
+                }));
+                continue;
+            }
+
+            const newStatusNum = derivarSituacion(results);
+            if (newStatusNum === null) {
+                console.log(`CUIT ${cuit}: no se pudo derivar situación del BCRA, skipping.`);
+                noData++;
+                continue;
+            }
+
+            const newStatus = String(newStatusNum);
+            const prevStatus = item.current_status ?? "1";
+
+            let trend = "stable";
+            if (parseInt(newStatus, 10) > parseInt(prevStatus, 10)) trend = "down";
+            else if (parseInt(newStatus, 10) < parseInt(prevStatus, 10)) trend = "up";
+
+            const statusChanged = newStatus !== prevStatus || trend !== item.trend;
+
             let updateExpression = "SET last_processed_period = :p";
             const exprValues = { ":p": currentPeriod };
 
-            const statusChanged = newStatus !== item.current_status || trend !== item.trend;
             if (statusChanged) {
                 updateExpression += ", current_status = :ns, previous_status = :ps, trend = :t, last_updated = :lu";
                 exprValues[":ns"] = newStatus;
-                exprValues[":ps"] = item.current_status;
+                exprValues[":ps"] = prevStatus;
                 exprValues[":t"] = trend;
                 exprValues[":lu"] = new Date().toISOString();
             }
@@ -95,23 +134,20 @@ exports.handler = async (event) => {
                 TableName: TABLE_NAME,
                 Key: { pk: item.pk, sk: item.sk },
                 UpdateExpression: updateExpression,
-                ExpressionAttributeValues: exprValues
+                ExpressionAttributeValues: exprValues,
             }));
 
             if (statusChanged) {
-                console.log(`Updated CUIT ${cuit}: ${item.current_status} -> ${newStatus} (${trend})`);
+                console.log(`CUIT ${cuit}: ${prevStatus} → ${newStatus} (${trend})`);
+                updated++;
             }
         }
 
-        if (skipped > 0) {
-            console.log(`Skipped ${skipped} CUITs already processed for ${currentPeriod}.`);
-        }
-
-        console.log("Portfolio updater cron completed.");
-        return { statusCode: 200, body: "Success" };
+        console.log(`Portfolio-updater completado. Actualizados: ${updated} | Sin datos BCRA: ${noData} | Ya procesados este período: ${skipped} | Errores: ${errors}`);
+        return { statusCode: 200, body: "OK" };
 
     } catch (error) {
-        console.error("Error running portfolio updater:", error);
+        console.error("Error fatal en portfolio-updater:", error);
         throw error;
     }
 };

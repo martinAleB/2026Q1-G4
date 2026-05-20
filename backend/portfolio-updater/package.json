@@ -9,8 +9,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "dependencies": {},
-  "devDependencies": {
+  "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1049.0",
     "@aws-sdk/lib-dynamodb": "^3.1049.0"
   }
