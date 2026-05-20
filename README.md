@@ -295,6 +295,27 @@ Algunas aclaraciones finales con respecto a las funcionalidades de este trabajo:
 - <b>Funcionalidad como API</b>: Si bien se pretende que el sistema provea una API que las Fintech puedan integrar para aplicar las funcionalidades, esta feature se implementará en el TP4.
 - <b>Control de Cartera</b>: Se agregó la opción de ejecutar la lambda de control desde el dashboard a modo demostrativo. Está configurado para correr en el primer día del mes (los datos se actualizan en los últimos del mes anterior).
 
+### Decisiones de Seguridad y Hallazgos de `tfsec`
+
+El check de `tfsec` en CI reporta algunos hallazgos que se decidió **no resolver con keys propias (CMK)** de forma deliberada. Las decisiones tomadas son:
+
+- <b>Cifrado en reposo: estrategia mixta</b>:
+  - Las colas SQS (`main`, `main_dlq`) y las tablas DynamoDB (`tf_lock` en bootstrap + las 5 del módulo en `terraform/main.tf`) se cifran con las keys gestionadas por AWS (`alias/aws/sqs`, `alias/aws/dynamodb`), no con Customer Managed Keys. Esto es consistente con la práctica de la cátedra y evita el costo y la operativa adicional de mantener KMS keys propias.
+  - Los buckets S3 `model_artifacts` y `tf_state` se cifran con SSE-KMS apuntando a `alias/aws/s3`. Funciona porque ambos buckets se leen únicamente desde principals con credenciales IAM (las Lambdas con `LabRole` y el CLI de Terraform respectivamente), que pueden hacer `kms:Decrypt` sobre la key gestionada por AWS.
+  - El bucket S3 `frontend` se cifra con SSE-S3 (`AES256`), **no con SSE-KMS**, por una incompatibilidad inherente del servicio: el bucket sirve archivos como sitio web estático a usuarios anónimos (`Principal=*`), y SSE-KMS exige que el requester tenga `kms:Decrypt` sobre la KMS key — permiso que el público anónimo no puede tener. Si se usa SSE-KMS, los objetos quedan no descargables (HTTP 400 `InvalidRequest`). Por eso este bucket queda obligatoriamente en SSE-S3 mientras se mantenga el modelo de hosting público directo desde S3.
+
+  El impacto sobre los chequeos automáticos es:
+  - **`tfsec`** (lo que corre el workflow `tfsec.yaml`): acepta los 2 buckets S3 con `kms_master_key_id` aws-managed (se conforma con que esté seteado, sin distinguir aws-managed de CMK), pero sí reporta como **error HIGH** las colas SQS (regla `aws-sqs-queue-encryption-use-cmk`) y como **notice LOW** la tabla `tf_lock` (regla `aws-dynamodb-table-customer-key`), porque esas reglas exigen CMK específicamente. El bucket `frontend` en AES256 lo reporta como notice por la regla `aws-s3-encryption-customer-key`.
+  - **`defsec` / GitHub Advanced Security** (la pestaña "Security" del repo): es más estricto y reporta los 3 buckets S3 y la tabla `tf_lock` como hallazgos por no usar CMK. Es un scanner nativo de GitHub, distinto de tfsec, que no se controla desde el código del proyecto.
+- <b>Bucket de frontend públicamente accesible</b>: El bucket `frontend` se sirve directamente como sitio web estático de S3 (`aws_s3_bucket_website_configuration`) con `aws_s3_bucket_public_access_block` deshabilitado y bucket policy `Allow Principal=*` para `s3:GetObject` únicamente (no se permiten escrituras, borrados ni listado). `tfsec` lo reporta como 4 errores (`block_public_acls`, `block_public_policy`, `ignore_public_acls`, `restrict_public_buckets` en `false`). Si bien el acceso es estrictamente de lectura, esto deja la infraestructura expuesta a tres riesgos asumidos conscientemente:
+  - <b>Sin HTTPS</b>: el endpoint de S3 website sólo soporta HTTP, por lo que el OAuth de Cognito termina rebotando al frontend en claro.
+  - <b>Amplificación de costos</b>: sin CDN delante, cada request directo a S3 se paga; un scraper agresivo puede consumir el crédito de AWS Academy rápidamente.
+  - <b>Exposición accidental</b>: cualquier archivo que llegue al bucket queda inmediatamente accesible si se conoce la key.
+
+  Estos riesgos quedan **pendientes para analizar e implementar en el TP4**, donde está previsto poner una distribución de CloudFront con Origin Access Control (OAC) delante del bucket, bloqueando totalmente el acceso público en S3 y obteniendo HTTPS, caching y la posibilidad de sumar WAF.
+
+- <b>Versionado deshabilitado en el bucket de frontend</b>: El bucket `frontend` tiene `aws_s3_bucket_versioning` explícitamente en `Disabled`. `tfsec` lo reporta como warning, pero habilitarlo sería contraproducente para este caso de uso: el bucket es el destino de un `aws s3 sync` que se ejecuta en cada deploy (ver `scripts/build-frontend.sh`). Cada sync sobrescribe los archivos de la SPA con la versión nueva del build, y con versionado activo cada sobrescritura generaría una versión histórica que se acumula indefinidamente en S3, inflando el costo de almacenamiento sin aportar valor (las versiones viejas del bundle de React son basura). Adicionalmente, el `terraform destroy` se vuelve lento porque `force_destroy` debe iterar y eliminar todas las versiones. Para los buckets donde sí tiene sentido (`model_artifacts`, `tf_state`), el versionado se mantiene habilitado.
+
 <p align="right">(<a href="#presti---cloud-computing">Volver</a>)</p>
 
 ## Integrantes:

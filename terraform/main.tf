@@ -151,6 +151,9 @@ module "dynamodb_simulations" {
   range_key    = "sk"
   billing_mode = var.dynamodb_billing_mode
 
+  server_side_encryption_enabled = true
+  point_in_time_recovery_enabled = true
+
   attributes = [
     { name = "sub", type = "S" },
     { name = "sk", type = "S" },
@@ -175,6 +178,9 @@ module "dynamodb_fintech" {
   hash_key     = "sub"
   billing_mode = var.dynamodb_billing_mode
 
+  server_side_encryption_enabled = true
+  point_in_time_recovery_enabled = true
+
   attributes = [
     { name = "sub", type = "S" },
   ]
@@ -188,6 +194,9 @@ module "dynamodb_product" {
   hash_key     = "sub"
   range_key    = "product_id"
   billing_mode = var.dynamodb_billing_mode
+
+  server_side_encryption_enabled = true
+  point_in_time_recovery_enabled = true
 
   attributes = [
     { name = "sub", type = "S" },
@@ -204,6 +213,9 @@ module "dynamodb_user" {
   range_key    = "cuit"
   billing_mode = var.dynamodb_billing_mode
 
+  server_side_encryption_enabled = true
+  point_in_time_recovery_enabled = true
+
   attributes = [
     { name = "sub", type = "S" },
     { name = "cuit", type = "S" },
@@ -218,6 +230,9 @@ module "dynamodb_portfolio" {
   hash_key     = "pk"
   range_key    = "sk"
   billing_mode = var.dynamodb_billing_mode
+
+  server_side_encryption_enabled = true
+  point_in_time_recovery_enabled = true
 
   attributes = [
     { name = "pk", type = "S" },
@@ -250,11 +265,13 @@ data "aws_iam_role" "lab_role" {
 resource "aws_sqs_queue" "main_dlq" {
   name                      = "${var.stack_name}-simulations-queue-dlq"
   message_retention_seconds = 1209600 # 14 days
+  kms_master_key_id         = "alias/aws/sqs"
 }
 
 resource "aws_sqs_queue" "main" {
   name                       = "${var.stack_name}-simulations-queue"
   visibility_timeout_seconds = var.sqs_visibility_timeout_seconds
+  kms_master_key_id          = "alias/aws/sqs"
 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.main_dlq.arn

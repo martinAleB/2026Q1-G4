@@ -16,7 +16,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "tf_state" {
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = "alias/aws/s3"
     }
   }
 }
@@ -38,5 +39,13 @@ resource "aws_dynamodb_table" "tf_lock" {
   attribute {
     name = "LockID"
     type = "S"
+  }
+
+  server_side_encryption {
+    enabled = true
+  }
+
+  point_in_time_recovery {
+    enabled = true
   }
 }
