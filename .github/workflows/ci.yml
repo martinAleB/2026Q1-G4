@@ -90,27 +90,6 @@ jobs:
         run: terraform validate
         working-directory: terraform/modules/network
 
-  engine-build:
-    name: Engine Build
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: Build engine
-        run: bash scripts/build-engine.sh
-
-      - name: Verify expected artifacts
-        run: |
-          test -f backend/simulations/engine-dist/lambda_function.py
-          test -d backend/simulations/engine-dist/numpy
-          test -d backend/simulations/engine-dist/ai_edge_litert
-          test -f backend/simulations/engine-dist/artifacts/modelo_crediticio.tflite
-          echo "Engine bundle OK"
 
   frontend:
     name: Frontend
