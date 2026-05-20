@@ -1,5 +1,5 @@
 resource "aws_cognito_user_pool" "main" {
-  name = "${var.project_name}-user-pool"
+  name = "${var.stack_name}-user-pool"
 
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
@@ -18,12 +18,12 @@ resource "aws_cognito_user_pool" "main" {
 }
 
 resource "aws_cognito_user_pool_domain" "main" {
-  domain       = "${var.project_name}-auth-domain-nashe"
+  domain       = "${var.stack_name}-auth-domain-nashe"
   user_pool_id = aws_cognito_user_pool.main.id
 }
 
 resource "aws_cognito_user_pool_client" "main" {
-  name         = "${var.project_name}-client"
+  name         = "${var.stack_name}-client"
   user_pool_id = aws_cognito_user_pool.main.id
 
   generate_secret = true
@@ -38,7 +38,7 @@ resource "aws_cognito_user_pool_client" "main" {
 }
 
 resource "aws_secretsmanager_secret" "cognito_client_secret" {
-  name                    = "${var.project_name}/cognito/client-secret"
+  name                    = "${var.stack_name}/cognito/client-secret"
   description             = "Cognito User Pool App Client secret, consumed by the auth-callback Lambda at runtime"
   recovery_window_in_days = 0
 }
@@ -50,7 +50,7 @@ resource "aws_secretsmanager_secret_version" "cognito_client_secret" {
 
 resource "aws_lambda_function" "auth_callback" {
   filename         = data.archive_file.lambdas["auth-callback"].output_path
-  function_name    = "${var.project_name}-auth-callback"
+  function_name    = "${var.stack_name}-auth-callback"
   role             = data.aws_iam_role.lab_role.arn
   handler          = "index.handler"
   source_code_hash = data.archive_file.lambdas["auth-callback"].output_base64sha256

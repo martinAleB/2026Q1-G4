@@ -2,20 +2,13 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${SCRIPT_DIR}/scripts/env.sh"
+
 TF_DIR="${SCRIPT_DIR}/terraform"
 
 echo "======================================================================"
 echo "Iniciando despliegue MÍNIMO (Solo API y Frontend)"
 echo "======================================================================"
-
-# --- 1. Validar variables de entorno ---
-if [ -z "$TF_STATE_BUCKET" ] || [ -z "$TF_LOCK_TABLE" ] || [ -z "$TF_FRONTEND_BUCKET_NAME" ]; then
-  echo "Faltan variables de entorno indispensables:"
-  echo "  export TF_STATE_BUCKET=<nombre-del-bucket-estado>"
-  echo "  export TF_LOCK_TABLE=<nombre-de-la-tabla-lock>"
-  echo "  export TF_FRONTEND_BUCKET_NAME=<nombre-del-bucket-frontend>"
-  exit 1
-fi
 
 TF_INIT_ARGS=(
   -backend-config="bucket=${TF_STATE_BUCKET}"

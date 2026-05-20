@@ -4,8 +4,8 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
-variable "project_name" {
-  description = "Prefix applied to every AWS resource name and tag (e.g. cloud-presti-product, cloud-presti-api)"
+variable "stack_name" {
+  description = "Unique prefix that namespaces every AWS resource and tag for this deployment. Each developer of the team uses their own value (e.g. tincho-presti, josefina-presti) so that parallel deploys to the same AWS account do not collide on globally-unique names (S3 buckets, DynamoDB tables, Lambda function names, etc)."
   type        = string
   default     = "cloud-presti"
 }

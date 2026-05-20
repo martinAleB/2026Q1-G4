@@ -55,7 +55,7 @@ resource "aws_lambda_event_source_mapping" "mappings" {
 
 resource "aws_lambda_function" "lambdas" {
   for_each         = local.lambda_configs
-  function_name    = "${var.project_name}-${each.key}"
+  function_name    = "${var.stack_name}-${each.key}"
   role             = data.aws_iam_role.lab_role.arn
   handler          = each.value.handler
   runtime          = each.value.runtime
@@ -78,7 +78,7 @@ resource "aws_lambda_function" "lambdas" {
 }
 
 resource "aws_cloudwatch_event_rule" "portfolio_updater" {
-  name                = "${var.project_name}-portfolio-updater-cron"
+  name                = "${var.stack_name}-portfolio-updater-cron"
   description         = "Executes portfolio-updater monthly"
   schedule_expression = "cron(0 10 1 * ? *)" # El dia 1 de cada mes a las 10:00 UTC
 }

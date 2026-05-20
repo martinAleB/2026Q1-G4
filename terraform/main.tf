@@ -2,7 +2,7 @@ module "vpc" {
   source = "./modules/network"
 
   vpc_config = {
-    name       = "${var.project_name}-vpc"
+    name       = "${var.stack_name}-vpc"
     cidr_block = var.vpc_cidr_block
     region     = var.aws_region
   }
@@ -134,7 +134,7 @@ module "dynamodb_simulations" {
   source  = "terraform-aws-modules/dynamodb-table/aws"
   version = "4.4.0"
 
-  name      = "${var.project_name}-simulations"
+  name      = "${var.stack_name}-simulations"
   hash_key  = "sub"
   range_key = "sk"
 
@@ -150,7 +150,7 @@ module "dynamodb_fintech" {
   source  = "terraform-aws-modules/dynamodb-table/aws"
   version = "4.4.0"
 
-  name     = "${var.project_name}-fintech"
+  name     = "${var.stack_name}-fintech"
   hash_key = "sub"
 
   attributes = [
@@ -164,7 +164,7 @@ module "dynamodb_product" {
   source  = "terraform-aws-modules/dynamodb-table/aws"
   version = "4.4.0"
 
-  name      = "${var.project_name}-product"
+  name      = "${var.stack_name}-product"
   hash_key  = "sub"
   range_key = "product_id"
 
@@ -180,7 +180,7 @@ module "dynamodb_user" {
   source  = "terraform-aws-modules/dynamodb-table/aws"
   version = "4.4.0"
 
-  name      = "${var.project_name}-user"
+  name      = "${var.stack_name}-user"
   hash_key  = "sub"
   range_key = "cuit"
 
@@ -196,7 +196,7 @@ module "dynamodb_portfolio" {
   source  = "terraform-aws-modules/dynamodb-table/aws"
   version = "4.4.0"
 
-  name      = "${var.project_name}-portfolio"
+  name      = "${var.stack_name}-portfolio"
   hash_key  = "pk"
   range_key = "sk"
 
@@ -209,10 +209,10 @@ module "dynamodb_portfolio" {
 
   global_secondary_indexes = [
     {
-      name               = "gsi1"
-      hash_key           = "gsi1_pk"
-      range_key          = "gsi1_sk"
-      projection_type    = "ALL"
+      name            = "gsi1"
+      hash_key        = "gsi1_pk"
+      range_key       = "gsi1_sk"
+      projection_type = "ALL"
     }
   ]
 
@@ -229,6 +229,6 @@ data "aws_iam_role" "lab_role" {
 # --- SQS ---
 
 resource "aws_sqs_queue" "main" {
-  name                       = "${var.project_name}-simulations-queue"
+  name                       = "${var.stack_name}-simulations-queue"
   visibility_timeout_seconds = var.sqs_visibility_timeout_seconds
 }
