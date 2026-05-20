@@ -1,0 +1,13 @@
+[project]
+name = "cloud-engine"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "boto3>=1.43.6",
+    "joblib>=1.5.3",
+    "pandas>=3.0.2",
+    "scikit-learn>=1.8.0",
+    "tensorflow>=2.21.0",
+]

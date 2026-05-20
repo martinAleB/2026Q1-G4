@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9"
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+        working-directory: terraform
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        working-directory: terraform
+        continue-on-error: true
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: terraform
+
+  terraform-bootstrap:
+    name: Terraform Bootstrap
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9"
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+        working-directory: terraform-bootstrap
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        working-directory: terraform-bootstrap
+        continue-on-error: true
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: terraform-bootstrap
+
+  terraform-module-network:
+    name: Terraform Module (network)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9"
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+        working-directory: terraform/modules/network
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        working-directory: terraform/modules/network
+        continue-on-error: true
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: terraform/modules/network
+
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Create .env.production
+        working-directory: frontend
+        run: |
+          cat > .env.production << EOF
+          VITE_COGNITO_DOMAIN=https://dummy.auth.us-east-1.amazoncognito.com
+          VITE_COGNITO_CLIENT_ID=dummy
+          VITE_API_GATEWAY_CALLBACK_URL=https://dummy.execute-api.us-east-1.amazonaws.com/callback
+          VITE_SIMULATIONS_API_URL=https://dummy.execute-api.us-east-1.amazonaws.com
+          EOF
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build

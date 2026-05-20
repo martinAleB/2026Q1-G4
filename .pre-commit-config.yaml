@@ -1,0 +1,52 @@
+# Pre-commit hooks for cloud-presti.
+#
+# To activate locally (one-time per clone):
+#   pip install pre-commit
+#   pre-commit install
+#
+# After that, the hooks run automatically on every `git commit`.
+# To run manually on all files (e.g. before pushing):
+#   pre-commit run --all-files
+
+repos:
+  # --- General file hygiene ---
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=1024']
+
+  # --- Terraform ---
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.96.3
+    hooks:
+      # Format check — fast, runs always.
+      - id: terraform_fmt
+
+      # Syntax + reference validation — runs `terraform validate` per directory.
+      - id: terraform_validate
+        args:
+          - --hook-config=--retry-once-with-cleanup=true
+
+      # Static linter for Terraform AWS provider. Requires tflint installed locally.
+      # macOS:    brew install tflint
+      # Linux:    curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+      - id: terraform_tflint
+
+      # Security / compliance scanner. Requires checkov installed locally.
+      # pip install checkov
+      - id: terraform_checkov
+        args:
+          - --args=--quiet
+          - --args=--skip-check=CKV_AWS_18,CKV_AWS_21,CKV_AWS_144,CKV2_AWS_6,CKV2_AWS_61,CKV2_AWS_62
+        # Skipped checks rationale:
+        # CKV_AWS_18  — S3 access logging: out of scope for the lab.
+        # CKV_AWS_21  — S3 versioning on frontend: explicitly disabled (static site).
+        # CKV_AWS_144 — S3 cross-region replication: not applicable (single-region lab).
+        # CKV2_AWS_6  — public access block on frontend bucket: intentional (static site hosting).
+        # CKV2_AWS_61, CKV2_AWS_62 — S3 lifecycle / notifications: out of scope.

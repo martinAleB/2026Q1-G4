@@ -1,0 +1,89 @@
+# macOS
+.DS_Store
+* [0-9].*
+* copy.*
+* copy [0-9].*
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Python (engine)
+build_engine
+engine/.venv/
+engine/venv/
+engine/__pycache__/
+engine/**/*.py[cod]
+engine/**/*$py.class
+engine/.pytest_cache/
+engine/.mypy_cache/
+engine/.ruff_cache/
+engine/.hypothesis/
+engine/.pyre/
+engine/build/
+engine/dist/
+engine/*.egg-info/
+engine/.eggs/
+engine/.env
+engine/.env.*
+engine/.python-version
+
+# Engine outputs
+backend/simulations/engine-dist/
+engine/src/model/artifacts/
+engine/agents/
+engine/data/*
+!engine/data/.gitkeep
+engine/data_processed/*
+!engine/data_processed/.gitkeep
+
+# Node (db migrations)
+db/node_modules/
+db/dist/
+
+# Node (frontend)
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+
+# Editor (frontend)
+frontend/.vscode/*
+!frontend/.vscode/extensions.json
+frontend/.idea
+frontend/*.suo
+frontend/*.ntvs*
+frontend/*.njsproj
+frontend/*.sln
+frontend/*.sw?
+
+# Frontend env
+frontend/.env
+frontend/.env.*
+
+# Frontend agents
+frontend/AGENTS.md
+
+# Agents
+.antigravitycli
+
+# ZIPs created
+*.zip
+**/*.zip
+
+# Backend (Node & Python)
+backend/**/node_modules/
+backend/**/__pycache__/
+
+# Terraform
+**/terraform.tfvars
+**/.terraform/
+**/.terraform.lock.hcl
+**/terraform.tfstate
+**/terraform.tfstate.backup
+**/.terraform.tfstate.lock.info
+**/tfplan
