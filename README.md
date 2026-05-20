@@ -15,6 +15,7 @@ La plataforma cuenta principalmente con las siguientes funcionalidades represent
 <details>
   <summary>Contenidos</summary>
   <ol>
+    <li><a href="#diagrama-de-arquitectura">Diagrama de Arquitectura</a></li>
     <li><a href="#estructura-del-repositorio">Estructura del Repositorio</a></li>
     <li><a href="#guía-de-instalación-y-despliegue">Guía de Instalación y Despliegue</a></li>
     <li><a href="#uso-de-la-aplicación-guía-de-ejecución">Uso de la Aplicación (Guía de Ejecución)</a></li>
@@ -151,23 +152,16 @@ La sección de **Cartera** sirve como un centro de control unificado del comport
 
 ## Descripción de Módulos
 
-El proyecto se estructura bajo un enfoque modular, limpio y escalable con las siguientes definiciones de infraestructura en Terraform:
+El proyecto está diseñado bajo un enfoque modular, utilizando **módulos** (contenedores reutilizables de configuraciones de Terraform) para encapsular y reutilizar componentes clave de la infraestructura de manera limpia y escalable:
 
-### 1. Módulo Raíz (`terraform/`)
-Es el punto de entrada y composición arquitectónica del proyecto. Orquesta y compone la infraestructura global:
-* Declara la red mediante la invocación del módulo local `network`.
-* Configura los recursos del Core de AWS: 5 tablas de DynamoDB (a través del módulo del registry oficial), la cola SQS principal y su DLQ, las 14 Lambdas del backend, la API HTTP de API Gateway, el User Pool de Cognito, Secrets Manager para el resguardo seguro del client secret, y el S3 que sirve el frontend estático.
-* Centraliza en `locals.tf` todos los diccionarios y colecciones (`lambda_sources`, `lambda_configs`, `lambda_permissions`, `api_integrations`, `api_routes`) para alimentar los recursos iterativamente, reduciendo la duplicación y el hardcoding.
-* Configura alarmas de CloudWatch (`alarms.tf`) basadas en métricas sobre fallas en Lambdas críticas y la presencia de mensajes en la DLQ.
-
-### 2. Módulo Interno de Red (`terraform/modules/network/`)
+### 1. Módulo Interno de Red (`terraform/modules/network/`)
 Módulo local reutilizable que encapsula el aprovisionamiento de la VPC y el plano de red seguro:
 * **Entradas Declarativas**: Recibe configuraciones en variables de tipo objeto (`vpc_config`, `subnets_config`, `route_tables_config`, `security_groups_config`, `vpc_endpoints_config`).
 * **Aislamiento**: Crea subnets públicas (para NAT Gateways e Internet Gateway) y privadas (para Lambdas en VPC).
 * **Seguridad y Endpoints**: Implementa Security Groups con soporte para referencias cruzadas (por ejemplo, permitir tráfico únicamente del Security Group de Lambdas hacia los VPC Interface Endpoints).
 * **VPC Endpoints**: Crea endpoints de tipo **Gateway** para S3 y DynamoDB (evitando el tráfico a través de internet) y de tipo **Interface** para SQS en las subnets privadas.
 
-### 3. Módulo Público de DynamoDB (`terraform-aws-modules/dynamodb-table/aws` v4.4.0)
+### 2. Módulo Público de DynamoDB (`terraform-aws-modules/dynamodb-table/aws` v4.4.0)
 Módulo del registry oficial instanciado **5 veces** para proveer persistencia aislada a nivel de tabla bajo demanda (`billing_mode = PAY_PER_REQUEST`):
 1. **`dynamodb_simulations`** (`${stack_name}-simulations`):
    * Hash key: `sub` | Range key: `sk`.
@@ -182,11 +176,6 @@ Módulo del registry oficial instanciado **5 veces** para proveer persistencia a
    * Hash key: `pk` | Range key: `sk`.
    * **GSI `gsi1`**: Indexa `gsi1_pk` y `gsi1_sk` para la resolución inversa Fintech -> CUIT.
    * **Sparse GSI `record-type-pk-index`**: Indexa `record_type` (Hash) y `pk` (Range). Al ser sparse, solo almacena ítems del tipo `INFO`, lo que permite al actualizador mensual iterar únicamente los CUITs de forma ágil y barata sin incurrir en `Scan` globales costosos sobre registros de control.
-
-### 4. Stack de Bootstrap (`terraform-bootstrap/`)
-Un stack independiente y aislado cuyo único objetivo es la creación de los recursos de soporte para la ejecución remota de Terraform:
-* Un bucket S3 con encriptación AES256, versionado activo y bloqueo estricto de acceso público para almacenar el backend state de Terraform de forma segura.
-* Una tabla de DynamoDB para el control de concurrencia y bloqueo de estado (`LockTable`), previniendo colisiones en despliegues concurrentes.
 
 <p align="right">(<a href="#presti---cloud-computing">Volver</a>)</p>
 
