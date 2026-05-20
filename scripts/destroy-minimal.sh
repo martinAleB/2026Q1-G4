@@ -35,7 +35,7 @@ terraform init -reconfigure "${TF_INIT_ARGS[@]}"
 
 echo "==> Ejecutando Terraform Destroy (Targeted)"
 terraform destroy -auto-approve \
-  -target=aws_dynamodb_table.simulations \
+  -target=module.dynamodb_simulations \
   -target=aws_sqs_queue.main \
   "-target=aws_lambda_function.lambdas[\"simulations-handler\"]" \
   "-target=aws_lambda_function.lambdas[\"simulations-engine\"]" \

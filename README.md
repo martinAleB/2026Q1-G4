@@ -104,7 +104,11 @@ Módulo del registry oficial, instanciado **cinco veces** para crear las tablas:
 | `dynamodb_user` | `${stack_name}-user` | `sub` | `cuit` | Relación fintech ↔ CUIT consultado |
 | `dynamodb_portfolio` | `${stack_name}-portfolio` | `pk` | `sk` (+ GSI inverso) | Monitoreo continuo del estado crediticio de CUITs trackeados |
 
-Todas usan `billing_mode = PAY_PER_REQUEST`. `dynamodb_portfolio` declara un GSI (`gsi1`) que invierte `pk`/`sk` para poder listar los CUITs de una fintech sin scan.
+Todas usan `billing_mode = PAY_PER_REQUEST`. Tres GSIs declarados:
+
+- `dynamodb_simulations.task-id-sub-index` (hash `task_id`, range `sub`): lookup directo por `task_id` para `recommendations-get` y `simulations-results`, sin tener que hacer Query por `sub` + `FilterExpression`. La range key `sub` mantiene aislamiento por tenant en la propia KeyCondition.
+- `dynamodb_portfolio.gsi1` (hash `gsi1_pk`, range `gsi1_sk`): relación inversa fintech → cuit, leída por `portfolio-get`.
+- `dynamodb_portfolio.record-type-pk-index` (hash `record_type`, range `pk`): **sparse GSI** que solo indexa los items `INFO` (las filas `FINTECH#<sub>` no tienen el atributo `record_type`). Usado por el cron `portfolio-updater` para iterar todos los CUITs trackeados sin Scan + FilterExpression.
 
 ### 1.4 Stack de bootstrap (`terraform-bootstrap/`)
 

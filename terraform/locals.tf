@@ -35,7 +35,7 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DYNAMODB_FINTECH_TABLE = aws_dynamodb_table.fintech.name
+        DYNAMODB_FINTECH_TABLE = module.dynamodb_fintech.dynamodb_table_id
       }
     }
     "fintech-get" = {
@@ -45,7 +45,7 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DYNAMODB_FINTECH_TABLE = aws_dynamodb_table.fintech.name
+        DYNAMODB_FINTECH_TABLE = module.dynamodb_fintech.dynamodb_table_id
       }
     }
     "fintech-update" = {
@@ -55,7 +55,7 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DYNAMODB_FINTECH_TABLE = aws_dynamodb_table.fintech.name
+        DYNAMODB_FINTECH_TABLE = module.dynamodb_fintech.dynamodb_table_id
       }
     }
     "product-get" = {
@@ -65,7 +65,7 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DYNAMODB_PRODUCT_TABLE = aws_dynamodb_table.product.name
+        DYNAMODB_PRODUCT_TABLE = module.dynamodb_product.dynamodb_table_id
       }
     }
     "product-create" = {
@@ -75,7 +75,7 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DYNAMODB_PRODUCT_TABLE = aws_dynamodb_table.product.name
+        DYNAMODB_PRODUCT_TABLE = module.dynamodb_product.dynamodb_table_id
       }
     }
     "product-update" = {
@@ -85,7 +85,7 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DYNAMODB_PRODUCT_TABLE = aws_dynamodb_table.product.name
+        DYNAMODB_PRODUCT_TABLE = module.dynamodb_product.dynamodb_table_id
       }
     }
     "product-delete" = {
@@ -95,7 +95,7 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DYNAMODB_PRODUCT_TABLE = aws_dynamodb_table.product.name
+        DYNAMODB_PRODUCT_TABLE = module.dynamodb_product.dynamodb_table_id
       }
     }
     "simulations-handler" = {
@@ -106,9 +106,9 @@ locals {
       in_vpc      = true
       env_vars = {
         SQS_QUEUE_URL            = aws_sqs_queue.main.url
-        DYNAMODB_TABLE_NAME      = aws_dynamodb_table.simulations.name
-        DYNAMODB_USER_TABLE      = aws_dynamodb_table.user.name
-        DYNAMODB_PORTFOLIO_TABLE = aws_dynamodb_table.portfolio.name
+        DYNAMODB_TABLE_NAME      = module.dynamodb_simulations.dynamodb_table_id
+        DYNAMODB_USER_TABLE      = module.dynamodb_user.dynamodb_table_id
+        DYNAMODB_PORTFOLIO_TABLE = module.dynamodb_portfolio.dynamodb_table_id
       }
     }
     "simulations-results" = {
@@ -118,7 +118,7 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DYNAMODB_TABLE_NAME = aws_dynamodb_table.simulations.name
+        DYNAMODB_TABLE_NAME = module.dynamodb_simulations.dynamodb_table_id
       }
     }
     "simulations-engine" = {
@@ -128,8 +128,8 @@ locals {
       memory_size = 1024
       in_vpc      = true
       env_vars = {
-        DYNAMODB_TABLE_NAME    = aws_dynamodb_table.simulations.name
-        DYNAMODB_FINTECH_TABLE = aws_dynamodb_table.fintech.name
+        DYNAMODB_TABLE_NAME    = module.dynamodb_simulations.dynamodb_table_id
+        DYNAMODB_FINTECH_TABLE = module.dynamodb_fintech.dynamodb_table_id
         SQS_QUEUE_URL          = aws_sqs_queue.main.url
       }
     }
@@ -140,8 +140,8 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DYNAMODB_TABLE_NAME    = aws_dynamodb_table.simulations.name
-        DYNAMODB_PRODUCT_TABLE = aws_dynamodb_table.product.name
+        DYNAMODB_TABLE_NAME    = module.dynamodb_simulations.dynamodb_table_id
+        DYNAMODB_PRODUCT_TABLE = module.dynamodb_product.dynamodb_table_id
       }
     }
     "portfolio-get" = {
@@ -151,7 +151,7 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DYNAMODB_PORTFOLIO_TABLE = aws_dynamodb_table.portfolio.name
+        DYNAMODB_PORTFOLIO_TABLE = module.dynamodb_portfolio.dynamodb_table_id
       }
     }
     "portfolio-updater" = {
@@ -161,7 +161,7 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DYNAMODB_PORTFOLIO_TABLE = aws_dynamodb_table.portfolio.name
+        DYNAMODB_PORTFOLIO_TABLE = module.dynamodb_portfolio.dynamodb_table_id
       }
     }
   }

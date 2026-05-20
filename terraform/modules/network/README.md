@@ -2,7 +2,7 @@
 
 Modulo de Terraform para configurar una VPC completa en AWS, incluyendo subnets, internet gateway, NAT gateways, route tables y security groups.
 
-Requiere Terraform >= 1.3 y AWS provider ~> 6.42.
+Requiere Terraform `>= 1.3` y AWS provider `~> 6.0`.
 
 ---
 

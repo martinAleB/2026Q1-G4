@@ -14,8 +14,9 @@ Para el panorama general del proyecto y los pasos de deploy end-to-end, ver el [
 | `providers.tf` | Provider AWS + `default_tags` (Project, Environment, ManagedBy, Repository). |
 | `variables.tf` | Variables de entrada (`stack_name`, `aws_region`, `bucket_name`, CIDRs, runtimes, etc.). |
 | `versions.tf` | Pin de Terraform (`~> 1.9`), pin del AWS provider (`~> 6.0`) y backend S3. |
-| `locals.tf` | Catálogos: `lambda_sources`, `lambda_configs`, `lambda_permissions`, `api_integrations`, `api_routes`. Centraliza todo lo que se itera con `for_each`. |
+| `locals.tf` | Catálogos: `lambda_sources`, `lambda_configs`, `lambda_permissions`, `lambda_async_dlq_arns`, `api_integrations`, `api_routes`. Centraliza todo lo que se itera con `for_each`. |
 | `lambdas.tf` | `aws_lambda_function` con `for_each` sobre `lambda_configs`, permissions, event source mappings, y CloudWatch Event Rule del cron mensual de `portfolio-updater`. |
+| `alarms.tf` | `aws_cloudwatch_metric_alarm` sobre la profundidad del DLQ y sobre el contador `Errors` de las Lambdas async/event-driven críticas (`simulations-engine`, `simulations-handler`, `fintech-post-confirmation`, `portfolio-updater`). |
 | `api-gateway.tf` | `aws_apigatewayv2_api` (HTTP API), stage, JWT authorizer Cognito, integrations y routes. |
 | `auth.tf` | Cognito User Pool + hosted UI domain + App Client + secret en Secrets Manager (consumido por la Lambda `auth-callback`). |
 | `frontend.tf` | S3 bucket público del frontend (SSE AES256, website hosting, bucket policy `s3:GetObject` público) + `terraform_data` que dispara el build/deploy del frontend. |
@@ -38,7 +39,7 @@ Todas con defaults razonables — solo `bucket_name` es estrictamente requerida 
 | `vpc_cidr_block` | `10.0.0.0/16` | CIDR de la VPC. |
 | `public_subnet_cidrs` | `["10.0.1.0/24", "10.0.4.0/24"]` | CIDRs de las dos subnets públicas (NAT + IGW route). |
 | `private_subnet_cidrs` | `["10.0.2.0/24", "10.0.5.0/24"]` | CIDRs de las dos subnets privadas (donde las Lambdas atachan sus ENIs). |
-| `lambda_node_runtime` | `nodejs20.x` | Runtime para las 11 Lambdas Node. |
+| `lambda_node_runtime` | `nodejs20.x` | Runtime para las 13 Lambdas Node. |
 | `lambda_python_runtime` | `python3.12` | Runtime para la Lambda `simulations-engine` (TFLite). |
 | `dynamodb_billing_mode` | `PAY_PER_REQUEST` | Billing mode de las 5 tablas. |
 | `sqs_visibility_timeout_seconds` | `300` | Visibility timeout del queue de simulaciones. |
@@ -95,4 +96,4 @@ El `aws_cognito_user_pool_client.main` se crea con `generate_secret = true`, y s
 - **Naming**: `${var.stack_name}-<resource>` para todos los recursos con nombre globally/account-unique (DynamoDB tables, Lambdas, API, SQS, Cognito user pool, secret).
 - **Tags**: heredados vía `default_tags` del provider. Cada recurso con tag-support recibe `Project`, `Environment`, `ManagedBy`, `Repository`.
 - **Singletons** se llaman `main` (ej `aws_apigatewayv2_api.main`, `aws_sqs_queue.main`, `aws_cognito_user_pool.main`).
-- **Lambdas**: las 15 se declaran vía `for_each` sobre `local.lambda_configs` para un único patrón sin casos especiales.
+- **Lambdas**: 14 en total. 13 se declaran vía `for_each` sobre `local.lambda_configs` para un único patrón sin casos especiales; `auth-callback` se declara standalone en `auth.tf` porque depende de outputs de Cognito que generarían un ciclo si se metiera en el `for_each`.

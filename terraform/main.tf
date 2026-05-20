@@ -128,24 +128,30 @@ module "vpc" {
   ]
 }
 
-resource "aws_dynamodb_table" "simulations" {
+# Las 5 tablas DynamoDB se materializan a través del módulo externo
+# terraform-aws-modules/dynamodb-table/aws v5.5.0 (cumple el requisito del
+# TP3 sobre uso de al menos un módulo del registry público). El módulo
+# expone una API declarativa para hash/range key, attributes y GSIs.
+#
+# Nota: el módulo internamente sigue usando hash_key/range_key dentro del
+# bloque global_secondary_index, que el AWS provider 6.x marca como
+# deprecated en favor de key_schema. Es solo un warning (no error) y la
+# funcionalidad sigue intacta hasta que el módulo migre.
+
+module "dynamodb_simulations" {
+  source  = "terraform-aws-modules/dynamodb-table/aws"
+  version = "4.4.0"
+
   name         = "${var.stack_name}-simulations"
-  billing_mode = var.dynamodb_billing_mode
   hash_key     = "sub"
   range_key    = "sk"
+  billing_mode = var.dynamodb_billing_mode
 
-  attribute {
-    name = "sub"
-    type = "S"
-  }
-  attribute {
-    name = "sk"
-    type = "S"
-  }
-  attribute {
-    name = "task_id"
-    type = "S"
-  }
+  attributes = [
+    { name = "sub", type = "S" },
+    { name = "sk", type = "S" },
+    { name = "task_id", type = "S" },
+  ]
 
   # GSI para lookup directo por task_id (recommendations-get y
   # simulations-results cuando se filtra por task_id). El sort key `sub`
@@ -154,108 +160,80 @@ resource "aws_dynamodb_table" "simulations" {
   # el task_id de otra. Reemplaza el patrón anterior de Query por sub +
   # FilterExpression task_id, que cobraba RCUs por todas las simulaciones
   # de la fintech antes de filtrar.
-  global_secondary_index {
-    name            = "task-id-sub-index"
-    projection_type = "ALL"
-
-    key_schema {
-      attribute_name = "task_id"
-      key_type       = "HASH"
+  global_secondary_indexes = [
+    {
+      name            = "task-id-sub-index"
+      hash_key        = "task_id"
+      range_key       = "sub"
+      projection_type = "ALL"
     }
-    key_schema {
-      attribute_name = "sub"
-      key_type       = "RANGE"
-    }
-  }
+  ]
 }
 
-resource "aws_dynamodb_table" "fintech" {
+module "dynamodb_fintech" {
+  source  = "terraform-aws-modules/dynamodb-table/aws"
+  version = "4.4.0"
+
   name         = "${var.stack_name}-fintech"
-  billing_mode = var.dynamodb_billing_mode
   hash_key     = "sub"
+  billing_mode = var.dynamodb_billing_mode
 
-  attribute {
-    name = "sub"
-    type = "S"
-  }
+  attributes = [
+    { name = "sub", type = "S" },
+  ]
 }
 
-resource "aws_dynamodb_table" "product" {
+module "dynamodb_product" {
+  source  = "terraform-aws-modules/dynamodb-table/aws"
+  version = "4.4.0"
+
   name         = "${var.stack_name}-product"
-  billing_mode = var.dynamodb_billing_mode
   hash_key     = "sub"
   range_key    = "product_id"
+  billing_mode = var.dynamodb_billing_mode
 
-  attribute {
-    name = "sub"
-    type = "S"
-  }
-  attribute {
-    name = "product_id"
-    type = "S"
-  }
+  attributes = [
+    { name = "sub", type = "S" },
+    { name = "product_id", type = "S" },
+  ]
 }
 
-resource "aws_dynamodb_table" "user" {
+module "dynamodb_user" {
+  source  = "terraform-aws-modules/dynamodb-table/aws"
+  version = "4.4.0"
+
   name         = "${var.stack_name}-user"
-  billing_mode = var.dynamodb_billing_mode
   hash_key     = "sub"
   range_key    = "cuit"
+  billing_mode = var.dynamodb_billing_mode
 
-  attribute {
-    name = "sub"
-    type = "S"
-  }
-  attribute {
-    name = "cuit"
-    type = "S"
-  }
+  attributes = [
+    { name = "sub", type = "S" },
+    { name = "cuit", type = "S" },
+  ]
 }
 
-resource "aws_dynamodb_table" "portfolio" {
+module "dynamodb_portfolio" {
+  source  = "terraform-aws-modules/dynamodb-table/aws"
+  version = "4.4.0"
+
   name         = "${var.stack_name}-portfolio"
-  billing_mode = var.dynamodb_billing_mode
   hash_key     = "pk"
   range_key    = "sk"
+  billing_mode = var.dynamodb_billing_mode
 
-  attribute {
-    name = "pk"
-    type = "S"
-  }
-  attribute {
-    name = "sk"
-    type = "S"
-  }
-  attribute {
-    name = "gsi1_pk"
-    type = "S"
-  }
-  attribute {
-    name = "gsi1_sk"
-    type = "S"
-  }
-  attribute {
-    name = "record_type"
-    type = "S"
-  }
+  attributes = [
+    { name = "pk", type = "S" },
+    { name = "sk", type = "S" },
+    { name = "gsi1_pk", type = "S" },
+    { name = "gsi1_sk", type = "S" },
+    { name = "record_type", type = "S" },
+  ]
 
   # gsi1: relación inversa fintech -> cuit. Lo escribe simulations-handler
   # en cada fila FINTECH#<sub>. Lo lee portfolio-get para listar los CUITs
   # trackeados por una fintech.
-  global_secondary_index {
-    name            = "gsi1"
-    projection_type = "ALL"
-
-    key_schema {
-      attribute_name = "gsi1_pk"
-      key_type       = "HASH"
-    }
-    key_schema {
-      attribute_name = "gsi1_sk"
-      key_type       = "RANGE"
-    }
-  }
-
+  #
   # record-type-pk-index: sparse GSI usado por portfolio-updater para
   # iterar SOLO los items INFO (uno por CUIT) sin tener que hacer Scan +
   # FilterExpression sobre toda la tabla (que también incluye filas
@@ -264,19 +242,20 @@ resource "aws_dynamodb_table" "portfolio" {
   # en el índice. Hot partition asumida: el hash es siempre "INFO". Para
   # el volumen del proyecto (cientos/miles de CUITs) está dentro de los
   # 3000 RCU por partición.
-  global_secondary_index {
-    name            = "record-type-pk-index"
-    projection_type = "ALL"
-
-    key_schema {
-      attribute_name = "record_type"
-      key_type       = "HASH"
+  global_secondary_indexes = [
+    {
+      name            = "gsi1"
+      hash_key        = "gsi1_pk"
+      range_key       = "gsi1_sk"
+      projection_type = "ALL"
+    },
+    {
+      name            = "record-type-pk-index"
+      hash_key        = "record_type"
+      range_key       = "pk"
+      projection_type = "ALL"
     }
-    key_schema {
-      attribute_name = "pk"
-      key_type       = "RANGE"
-    }
-  }
+  ]
 }
 
 
