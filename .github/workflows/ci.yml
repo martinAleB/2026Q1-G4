@@ -4,6 +4,13 @@ on:
   push:
   pull_request:
 
+# If a new push lands on the same ref while a CI run is in flight, cancel the
+# older one — the latest commit supersedes it. Saves Actions minutes and
+# unblocks the queue.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   terraform:
     name: Terraform
@@ -85,6 +92,33 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
         working-directory: terraform/modules/network
+
+  engine-build:
+    name: Engine Build
+    runs-on: ubuntu-latest
+
+    # The engine is the only Lambda whose package is non-trivial (Python +
+    # TFLite + numpy bundled for manylinux). A broken requirements.txt or a
+    # missing artifact would silently pass `terraform validate` and only
+    # blow up at deploy. This job runs the real build script so a PR that
+    # touches the engine surface fails fast in CI.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Build engine
+        run: bash scripts/build-engine.sh
+
+      - name: Verify expected artifacts
+        run: |
+          test -f backend/simulations/engine-dist/lambda_function.py
+          test -d backend/simulations/engine-dist/numpy
+          test -d backend/simulations/engine-dist/ai_edge_litert
+          test -f backend/simulations/engine-dist/artifacts/modelo_crediticio.tflite
+          echo "Engine bundle OK"
 
   frontend:
     name: Frontend

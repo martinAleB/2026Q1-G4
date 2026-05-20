@@ -1,5 +1,6 @@
 import json
 import os
+import time
 import urllib.request
 import urllib.error
 from decimal import Decimal
@@ -33,7 +34,26 @@ SQS_QUEUE_URL          = os.environ.get('SQS_QUEUE_URL')
 MODEL_ARTIFACTS_BUCKET = os.environ.get('MODEL_ARTIFACTS_BUCKET')
 MODEL_ARTIFACTS_PREFIX = os.environ.get('MODEL_ARTIFACTS_PREFIX', 'v1/')
 
+
+def _required_env(name: str) -> str:
+    """Falla en cold start si la env var no está. Si una de estas falta el
+    Lambda no puede funcionar correctamente (silenciosamente caería a
+    defaults o saltearía writes), así que es preferible que CloudWatch
+    muestre un init error visible en métricas antes de procesar mensajes.
+    """
+    value = os.environ.get(name)
+    if not value:
+        raise RuntimeError(f"Required env var {name} is not set")
+    return value
+
 RETRY_DELAYS = [60, 120, 240, 480]
+
+# Reintentos in-process para llamadas puntuales a DynamoDB (lecturas de
+# parámetros de la fintech y escrituras de estado de simulación). Cubren
+# blips transitorios (throttling, fallos de red breves) sin tener que
+# devolver el mensaje a SQS, que conlleva re-llamar al BCRA.
+DDB_MAX_ATTEMPTS = 3
+DDB_BASE_DELAY_S = 0.5
 
 FINTECH_DEFAULTS = {
     'max_situacion_crediticia': 2,
@@ -167,19 +187,30 @@ def _read_json(path: Path):
         return json.load(f)
 
 def get_fintech_params(sub: str) -> dict:
-    """Lee los parámetros generales de la fintech de DynamoDB. Si falta algún campo, usa defaults."""
-    if not DYNAMODB_FINTECH_TABLE:
-        print("DYNAMODB_FINTECH_TABLE no definida, usando defaults.")
-        return dict(FINTECH_DEFAULTS)
+    """Lee los parámetros generales de la fintech de DynamoDB.
 
-    try:
-        response = dynamodb.get_item(
-            TableName=DYNAMODB_FINTECH_TABLE,
-            Key={"sub": {"S": sub}},
-        )
-        item = response.get('Item', {})
-    except Exception as e:
-        print(f"Error leyendo fintech params para {sub}: {str(e)}. Usando defaults.")
+    Reintenta unas pocas veces ante fallos transitorios y, si todos los
+    intentos fallan, cae a los defaults para no bloquear la simulación.
+    Si falta algún campo individual en el item, también se completa con default.
+    """
+    last_error = None
+    item = None
+    for attempt in range(DDB_MAX_ATTEMPTS):
+        try:
+            response = dynamodb.get_item(
+                TableName=DYNAMODB_FINTECH_TABLE,
+                Key={"sub": {"S": sub}},
+            )
+            item = response.get('Item', {})
+            break
+        except Exception as e:
+            last_error = e
+            print(f"Error leyendo fintech params para {sub} (intento {attempt + 1}/{DDB_MAX_ATTEMPTS}): {str(e)}")
+            if attempt < DDB_MAX_ATTEMPTS - 1:
+                time.sleep(DDB_BASE_DELAY_S * (2 ** attempt))
+
+    if item is None:
+        print(f"No se pudieron leer fintech params para {sub} tras {DDB_MAX_ATTEMPTS} intentos. Usando defaults. Último error: {last_error}")
         return dict(FINTECH_DEFAULTS)
 
     params = dict(FINTECH_DEFAULTS)
@@ -230,43 +261,53 @@ def apply_filter(features: dict, params: dict) -> list:
     return reasons
 
 def update_simulation_status(sub: str, cuit: str, task_id: str, status: str, score: float = None, error: str = None, rejection_reasons: list = None):
-    if not DYNAMODB_TABLE:
-        print("DYNAMODB_TABLE_NAME no definida, omitiendo guardado.")
-        return
+    """Persiste el estado de la simulación en DynamoDB.
 
-    try:
-        update_expression = "SET #st = :status, updated_at = :now"
-        expression_values = {
-            ":status": {"S": status},
-            ":now": {"S": datetime.datetime.now(datetime.timezone.utc).isoformat()}
-        }
-        expression_names = {"#st": "status"}
+    Reintenta ante fallos transitorios. Si todos los intentos fallan, levanta
+    excepción para que el caller decida (típicamente re-encolar via SQS con
+    attempt++) en vez de dejar la simulación colgada en PROCESSING.
+    """
+    update_expression = "SET #st = :status, updated_at = :now"
+    expression_values = {
+        ":status": {"S": status},
+        ":now": {"S": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+    }
+    expression_names = {"#st": "status"}
 
-        if score is not None:
-            update_expression += ", score = :score"
-            expression_values[":score"] = {"N": str(score)}
+    if score is not None:
+        update_expression += ", score = :score"
+        expression_values[":score"] = {"N": str(score)}
 
-        if error is not None:
-            update_expression += ", error_message = :error"
-            expression_values[":error"] = {"S": str(error)}
+    if error is not None:
+        update_expression += ", error_message = :error"
+        expression_values[":error"] = {"S": str(error)}
 
-        if rejection_reasons is not None:
-            update_expression += ", rejection_reasons = :reasons"
-            expression_values[":reasons"] = {"L": [{"S": r} for r in rejection_reasons]}
+    if rejection_reasons is not None:
+        update_expression += ", rejection_reasons = :reasons"
+        expression_values[":reasons"] = {"L": [{"S": r} for r in rejection_reasons]}
 
-        dynamodb.update_item(
-            TableName=DYNAMODB_TABLE,
-            Key={
-                "sub": {"S": sub},
-                "sk":  {"S": f"CUIT#{cuit}#TASK#{task_id}"}
-            },
-            UpdateExpression=update_expression,
-            ExpressionAttributeValues=expression_values,
-            ExpressionAttributeNames=expression_names
-        )
-        print(f"Estado en DB actualizado a {status} para {task_id}")
-    except Exception as e:
-        print(f"Error actualizando DynamoDB para {task_id}: {str(e)}")
+    last_error = None
+    for attempt in range(DDB_MAX_ATTEMPTS):
+        try:
+            dynamodb.update_item(
+                TableName=DYNAMODB_TABLE,
+                Key={
+                    "sub": {"S": sub},
+                    "sk":  {"S": f"CUIT#{cuit}#TASK#{task_id}"}
+                },
+                UpdateExpression=update_expression,
+                ExpressionAttributeValues=expression_values,
+                ExpressionAttributeNames=expression_names
+            )
+            print(f"Estado en DB actualizado a {status} para {task_id}")
+            return
+        except Exception as e:
+            last_error = e
+            print(f"Error actualizando DynamoDB para {task_id} (intento {attempt + 1}/{DDB_MAX_ATTEMPTS}): {str(e)}")
+            if attempt < DDB_MAX_ATTEMPTS - 1:
+                time.sleep(DDB_BASE_DELAY_S * (2 ** attempt))
+
+    raise Exception(f"No se pudo actualizar DynamoDB para {task_id} tras {DDB_MAX_ATTEMPTS} intentos: {last_error}")
 
 def cargar_artefactos():
     global _INTERPRETER, _SCALER_PARAMS, _FEATURE_COLUMNS, _FILL_VALUES

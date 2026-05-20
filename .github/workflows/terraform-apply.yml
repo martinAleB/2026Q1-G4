@@ -3,6 +3,14 @@ name: Terraform Apply
 on:
   workflow_dispatch:
 
+# Serialize apply runs: only one apply can be in flight at a time. We do NOT
+# cancel an in-progress apply if another is queued, because cancelling
+# Terraform mid-apply can leave the state inconsistent — the second run
+# waits for the first to finish.
+concurrency:
+  group: terraform-apply
+  cancel-in-progress: false
+
 jobs:
   infrastructure:
     name: Infrastructure
@@ -57,13 +65,19 @@ jobs:
         run: terraform validate
         working-directory: terraform
 
+      # Save the plan to a file and apply that exact file, so the plan that
+      # was reviewed is what actually runs. Prevents the apply step from
+      # silently picking up state drift that appeared between plan and apply.
       - name: Terraform Plan
-        run: terraform plan -no-color
+        run: terraform plan -no-color -out=tfplan
         working-directory: terraform
 
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main'
-        run: bash scripts/terraform-apply.sh
+        # Passing a saved plan skips the prompt automatically; -auto-approve
+        # would be redundant.
+        run: terraform apply tfplan
+        working-directory: terraform
 
       - name: Capture Terraform Outputs
         id: tf_outputs
@@ -118,4 +132,7 @@ jobs:
 
       - name: Deploy to S3
         working-directory: frontend
-        run: aws s3 sync dist/ s3://${{ needs.infrastructure.outputs.bucket_name }} --delete --acl public-read
+        # No --acl public-read: the bucket has BucketOwnerPreferred ownership
+        # and a bucket policy that grants public s3:GetObject on every object,
+        # so the ACL flag is redundant and conflicts with the ownership setting.
+        run: aws s3 sync dist/ s3://${{ needs.infrastructure.outputs.bucket_name }} --delete

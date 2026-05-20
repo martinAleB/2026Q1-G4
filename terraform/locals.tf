@@ -1,4 +1,15 @@
 locals {
+  # Default Lambda configuration shared by every aws_lambda_function in the
+  # project (both the for_each map below and the standalone auth_callback in
+  # auth.tf, which can't join the map without a cycle through Cognito).
+  lambda_defaults = {
+    role        = data.aws_iam_role.lab_role.arn
+    handler     = "index.handler"
+    runtime     = var.lambda_node_runtime
+    timeout     = 30
+    memory_size = 256
+  }
+
   lambda_sources = {
     "fintech-post-confirmation" = "${path.root}/../backend/fintech-post-confirmation"
     "fintech-get"               = "${path.root}/../backend/fintech-get"
@@ -131,14 +142,13 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DYNAMODB_TABLE_NAME      = module.dynamodb_simulations.dynamodb_table_id
-        DYNAMODB_PRODUCT_TABLE   = module.dynamodb_product.dynamodb_table_id
-        DYNAMODB_PORTFOLIO_TABLE = module.dynamodb_portfolio.dynamodb_table_id
+        DYNAMODB_TABLE_NAME    = module.dynamodb_simulations.dynamodb_table_id
+        DYNAMODB_PRODUCT_TABLE = module.dynamodb_product.dynamodb_table_id
       }
     }
     "portfolio-get" = {
       handler     = "index.handler"
-      runtime     = "nodejs20.x"
+      runtime     = var.lambda_node_runtime
       timeout     = 30
       memory_size = 256
       in_vpc      = true
@@ -148,7 +158,7 @@ locals {
     }
     "portfolio-updater" = {
       handler     = "index.handler"
-      runtime     = "nodejs20.x"
+      runtime     = var.lambda_node_runtime
       timeout     = 180
       memory_size = 256
       in_vpc      = true
@@ -200,10 +210,21 @@ locals {
     ]
   }
 
-  lambda_event_sources = {
-    "simulations-engine" = [
-      { event_source_arn = aws_sqs_queue.main.arn, batch_size = 1 }
-    ]
+  # Lambdas invoked **asynchronously** opt in here to send failed
+  # invocations to a Dead Letter Queue once Lambda's built-in async retries
+  # (2 retries over up to 6h) are exhausted. Without DLQ the event is just
+  # dropped.
+  #
+  # - portfolio-updater: invocada por EventBridge (cron mensual). Si falla
+  #   persistentemente queremos ver el evento perdido en el DLQ.
+  # - fintech-post-confirmation: invocada async por Cognito tras confirmar
+  #   email. Si falla, Cognito ya confirmó al usuario pero la fila inicial
+  #   de fintech no se creó; con el DLQ podemos reprocesar el evento
+  #   manualmente. (Hay además un fallback lazy en fintech-get que crea la
+  #   fila con defaults si no existe, pero pierde el email del claim.)
+  lambda_async_dlq_arns = {
+    "portfolio-updater"         = aws_sqs_queue.main_dlq.arn
+    "fintech-post-confirmation" = aws_sqs_queue.main_dlq.arn
   }
 
   api_integrations = {

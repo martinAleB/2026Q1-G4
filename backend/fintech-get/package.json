@@ -2,7 +2,8 @@
   "name": "fintech-get",
   "version": "1.0.0",
   "main": "index.js",
-  "dependencies": {
+  "dependencies": {},
+  "devDependencies": {
     "@aws-sdk/client-dynamodb": "^3.600.0",
     "@aws-sdk/lib-dynamodb": "^3.600.0"
   }

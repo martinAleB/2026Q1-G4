@@ -86,6 +86,6 @@ exports.handler = async (event) => {
     return respond(200, Attributes);
   } catch (error) {
     console.error('Error:', error);
-    return respond(500, { error: 'Error interno del servidor' });
+    return respond(500, { error: 'Error interno del servidor', message: error.message });
   }
 };

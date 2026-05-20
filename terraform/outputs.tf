@@ -1,11 +1,9 @@
-# --- API Gateway ---
 
 output "api_endpoint" {
   description = "Base URL of the HTTP API Gateway (consumed by the frontend as VITE_SIMULATIONS_API_URL and by Cognito as the OAuth callback host)"
   value       = aws_apigatewayv2_api.main.api_endpoint
 }
 
-# --- Cognito ---
 
 output "auth_user_pool_id" {
   description = "Cognito User Pool ID (used to build the JWT issuer URL: https://cognito-idp.<region>.amazonaws.com/<id>)"
@@ -22,7 +20,6 @@ output "auth_cognito_domain" {
   value       = aws_cognito_user_pool_domain.main.domain
 }
 
-# --- Frontend (S3 static site) ---
 
 output "bucket_name" {
   description = "S3 bucket name hosting the static frontend (target of aws s3 sync in build-frontend.sh)"

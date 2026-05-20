@@ -6,19 +6,6 @@ data "archive_file" "lambdas" {
 }
 
 locals {
-  lambda_event_sources_flat = {
-    for entry in flatten([
-      for lambda_key, sources in local.lambda_event_sources : [
-        for i, source in sources : {
-          key              = "${lambda_key}-${i}"
-          lambda_key       = lambda_key
-          event_source_arn = source.event_source_arn
-          batch_size       = source.batch_size
-        }
-      ]
-    ]) : entry.key => entry
-  }
-
   lambda_permissions_flat = {
     for entry in flatten([
       for lambda_key, perms in local.lambda_permissions : [
@@ -33,8 +20,6 @@ locals {
   }
 }
 
-# --- Lambda permissions ---
-
 resource "aws_lambda_permission" "permissions" {
   for_each      = local.lambda_permissions_flat
   statement_id  = "Allow-${each.key}"
@@ -44,14 +29,24 @@ resource "aws_lambda_permission" "permissions" {
   source_arn    = each.value.source_arn
 }
 
-resource "aws_lambda_event_source_mapping" "mappings" {
-  for_each         = local.lambda_event_sources_flat
-  event_source_arn = each.value.event_source_arn
-  function_name    = aws_lambda_function.lambdas[each.value.lambda_key].arn
-  batch_size       = each.value.batch_size
+resource "aws_lambda_event_source_mapping" "simulations_engine" {
+  event_source_arn = aws_sqs_queue.main.arn
+  function_name    = aws_lambda_function.lambdas["simulations-engine"].arn
+  batch_size       = 1
 }
 
-# --- Lambda functions ---
+# Explicit log groups for every Lambda function so we can pin a retention
+# policy. Without this resource, AWS Lambda lazy-creates the log group on
+# first invocation with retention "never expire", which bleeds the lab
+# budget over time.
+
+resource "aws_cloudwatch_log_group" "lambdas" {
+  for_each = toset(concat(keys(local.lambda_configs), ["auth-callback"]))
+
+  name              = "/aws/lambda/${var.stack_name}-${each.key}"
+  retention_in_days = var.lambda_log_retention_days
+}
+
 
 resource "aws_lambda_function" "lambdas" {
   for_each         = local.lambda_configs
@@ -72,19 +67,54 @@ resource "aws_lambda_function" "lambdas" {
     }
   }
 
+  # Dead letter target for async invocations (EventBridge, SNS, etc.). Opt-in
+  # per Lambda via local.lambda_async_dlq_arns. Sync invokers (API Gateway,
+  # Cognito triggers, SQS pollers) ignore this — they have their own retry /
+  # DLQ paths.
+  dynamic "dead_letter_config" {
+    for_each = lookup(local.lambda_async_dlq_arns, each.key, null) != null ? [1] : []
+    content {
+      target_arn = local.lambda_async_dlq_arns[each.key]
+    }
+  }
+
   environment {
     variables = each.value.env_vars
   }
+
+  # Ensure the log group with retention exists before the Lambda runs, so the
+  # first invocation reuses our pre-created log group instead of AWS lazily
+  # creating one with retention "never expire".
+  depends_on = [aws_cloudwatch_log_group.lambdas]
 }
 
 resource "aws_cloudwatch_event_rule" "portfolio_updater" {
   name                = "${var.stack_name}-portfolio-updater-cron"
   description         = "Executes portfolio-updater monthly"
-  schedule_expression = "cron(0 10 1 * ? *)" # El dia 1 de cada mes a las 10:00 UTC
+  schedule_expression = "cron(0 10 1 * ? *)" # First of each month at 10:00 UTC
+
+  tags = {
+    Name = "${var.stack_name}-portfolio-updater-cron"
+  }
 }
 
 resource "aws_cloudwatch_event_target" "portfolio_updater_target" {
   rule      = aws_cloudwatch_event_rule.portfolio_updater.name
   target_id = "portfolio_updater"
   arn       = aws_lambda_function.lambdas["portfolio-updater"].arn
+
+  # If EventBridge cannot deliver the event to the Lambda (e.g. Lambda is
+  # throttled by the lab's 10-concurrent cap, briefly missing during a
+  # redeploy, or transient AWS issues), retry for up to an hour and then
+  # drop the event into the shared DLQ. This is independent from the Lambda
+  # async DLQ (local.lambda_async_dlq_arns) which catches failures *during*
+  # Lambda execution — both layers together cover the full failure surface.
+  retry_policy {
+    maximum_retry_attempts       = 3
+    maximum_event_age_in_seconds = 3600
+  }
+
+  dead_letter_config {
+    arn = aws_sqs_queue.main_dlq.arn
+  }
 }

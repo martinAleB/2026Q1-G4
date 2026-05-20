@@ -2,7 +2,8 @@
   "name": "auth-callback",
   "version": "1.0.0",
   "main": "index.js",
-  "dependencies": {
+  "dependencies": {},
+  "devDependencies": {
     "@aws-sdk/client-secrets-manager": "^3.600.0"
   }
 }

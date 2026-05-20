@@ -9,11 +9,9 @@ const docClient = DynamoDBDocumentClient.from(client);
 const SIMULATIONS_TABLE = process.env.DYNAMODB_TABLE_NAME;
 const PRODUCT_TABLE = process.env.DYNAMODB_PRODUCT_TABLE;
 
-const HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-  'Access-Control-Allow-Methods': 'OPTIONS,GET',
-};
+// Headers CORS los inyecta API Gateway (cors_configuration en api-gateway.tf);
+// si los devolvemos desde el Lambda pisan la config del gateway.
+const HEADERS = { 'Content-Type': 'application/json' };
 
 function respond(statusCode, body) {
   return { statusCode, headers: HEADERS, body: JSON.stringify(body) };
@@ -50,10 +48,14 @@ exports.handler = async (event) => {
     const taskId = event.queryStringParameters?.task_id;
     if (!taskId) return respond(400, { error: 'Falta el query param: task_id' });
 
+    // Lookup via GSI task-id-sub-index: 1 RCU para encontrar el item exacto
+    // y validar tenant ownership en la misma KeyCondition. Reemplaza el
+    // patrón anterior (Query por sub + FilterExpression task_id) que cobraba
+    // RCUs por todas las simulaciones de la fintech antes de filtrar.
     const simResp = await docClient.send(new QueryCommand({
       TableName: SIMULATIONS_TABLE,
-      KeyConditionExpression: '#sub = :sub',
-      FilterExpression: 'task_id = :tid',
+      IndexName: 'task-id-sub-index',
+      KeyConditionExpression: 'task_id = :tid AND #sub = :sub',
       ExpressionAttributeNames: { '#sub': 'sub' },
       ExpressionAttributeValues: { ':sub': sub, ':tid': taskId },
     }));

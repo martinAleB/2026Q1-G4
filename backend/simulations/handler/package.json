@@ -4,8 +4,6 @@
   "description": "API Gateway handler for simulations (Producer)",
   "main": "index.js",
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.1045.0",
-    "@aws-sdk/client-sqs": "^3.1045.0",
     "uuid": "^9.0.1"
   },
   "scripts": {
@@ -13,5 +11,9 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1045.0",
+    "@aws-sdk/client-sqs": "^3.1045.0"
+  }
 }

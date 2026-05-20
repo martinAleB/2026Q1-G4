@@ -7,6 +7,11 @@ on:
         description: 'Type "destroy" to confirm destruction of all infrastructure'
         required: true
 
+# Serialize destroys so two queued destroys can't race on the state lock.
+concurrency:
+  group: terraform-destroy
+  cancel-in-progress: false
+
 jobs:
   terraform-destroy:
     name: Terraform Destroy
@@ -35,12 +40,6 @@ jobs:
         with:
           terraform_version: "~1.9"
           terraform_wrapper: false
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: Build engine
-        run: bash scripts/build-engine.sh
 
       - name: Empty Frontend Bucket
         run: aws s3 rm s3://${{ vars.STACK_NAME }}-frontend-bucket --recursive

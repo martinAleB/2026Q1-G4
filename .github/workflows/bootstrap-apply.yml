@@ -3,6 +3,12 @@ name: Bootstrap Apply
 on:
   workflow_dispatch:
 
+# Bootstrap creates the state bucket and lock table — race conditions on these
+# would corrupt the backend for everyone, so we serialize.
+concurrency:
+  group: bootstrap-apply
+  cancel-in-progress: false
+
 jobs:
   bootstrap:
     name: Bootstrap
@@ -17,6 +23,7 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
       AWS_DEFAULT_REGION: us-east-1
+      TF_VAR_stack_name: ${{ vars.STACK_NAME }}
       TF_STATE_BUCKET: ${{ vars.STACK_NAME }}-state-bucket
       TF_LOCK_TABLE: ${{ vars.STACK_NAME }}-lock-table
 

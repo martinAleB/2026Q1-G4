@@ -1,18 +1,18 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
+START_TIME=$(date +%s)
 echo "Iniciando empaquetado de la Lambda de Simulaciones..."
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 
-# 1. Crear directorio de build limpio
 BUILD_DIR="backend/simulations/engine-dist"
 rm -rf "${BUILD_DIR}"
 mkdir -p "${BUILD_DIR}"
 
-# 2. Instalar dependencias para Amazon Linux (manylinux) usando uv
-echo "Instalando dependencias (manylinux)..."
+echo "[$(date +%T)] Instalando dependencias (manylinux)... (~30-90s, descarga numpy + LiteRT)"
+step_start=$(date +%s)
 uv pip install \
     --python-platform x86_64-manylinux_2_28 \
     --target "${BUILD_DIR}" \
@@ -20,13 +20,15 @@ uv pip install \
     --only-binary=:all: \
     --no-cache \
     -r "${ROOT_DIR}/backend/simulations/engine/requirements.txt"
+echo "    OK ($(($(date +%s) - step_start))s)"
 
-# 3. Copiar el código de la Lambda
-echo "Copiando código fuente..."
+echo "[$(date +%T)] Copiando código fuente..."
 cp -r backend/simulations/engine/* "${BUILD_DIR}/"
 
-# 4. Limpieza para reducir tamaño
-echo "Ejecutando limpieza para bajar de 50MB..."
+# Trim build to fit under the 50 MB Lambda upload limit. Strips test dirs,
+# .dist-info metadata, the cpython-311/310 numpy artifacts we don't use, and
+# debug symbols from .so binaries.
+echo "[$(date +%T)] Ejecutando limpieza para bajar de 50MB..."
 
 find "${BUILD_DIR}" -type d -name "tests"      -exec rm -rf {} + 2>/dev/null || true
 find "${BUILD_DIR}" -type d -name "test"       -exec rm -rf {} + 2>/dev/null || true
@@ -48,6 +50,7 @@ rm -rf "${BUILD_DIR}/numpy/_core/lib" 2>/dev/null || true
 find "${BUILD_DIR}" -name "*.so" -exec strip --strip-unneeded {} + 2>/dev/null || true
 
 SIZE=$(du -sh "${BUILD_DIR}" | cut -f1)
+ELAPSED=$(($(date +%s) - START_TIME))
 echo "======================================================================"
-echo "¡Build exitoso! Directorio generado: ${BUILD_DIR} (Tamaño: ${SIZE})"
+echo "¡Build exitoso! Directorio generado: ${BUILD_DIR} (Tamaño: ${SIZE}, ${ELAPSED}s)"
 echo "======================================================================"

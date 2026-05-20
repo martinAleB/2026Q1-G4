@@ -6,15 +6,13 @@ const docClient = DynamoDBDocumentClient.from(client);
 
 const DYNAMODB_TABLE = process.env.DYNAMODB_TABLE_NAME;
 
+// Headers CORS los inyecta API Gateway (cors_configuration en api-gateway.tf);
+// si los devolvemos desde el Lambda pisan la config del gateway.
+const headers = { "Content-Type": "application/json" };
+
 exports.handler = async (event) => {
     try {
         console.log("Event received:", JSON.stringify(event));
-
-        const headers = {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Content-Type,Authorization",
-            "Access-Control-Allow-Methods": "OPTIONS,GET"
-        };
 
         const sub = event.requestContext?.authorizer?.jwt?.claims?.sub;
         if (!sub) {
@@ -24,22 +22,36 @@ exports.handler = async (event) => {
         const { queryStringParameters } = event;
         const { cuit, task_id } = queryStringParameters || {};
 
-        let queryParams = {
-            TableName: DYNAMODB_TABLE,
-            KeyConditionExpression: "#sub = :sub",
-            ExpressionAttributeNames: { "#sub": "sub" },
-            ExpressionAttributeValues: {
-                ":sub": sub
-            }
-        };
-
-        if (cuit && !task_id) {
-            queryParams.KeyConditionExpression += " AND begins_with(sk, :sk_prefix)";
-            queryParams.ExpressionAttributeValues[":sk_prefix"] = `CUIT#${cuit}`;
-        } 
-        else if (task_id) {
-            queryParams.FilterExpression = "task_id = :tid";
-            queryParams.ExpressionAttributeValues[":tid"] = task_id;
+        // Tres patrones de acceso:
+        // - task_id: Query directo sobre el GSI task-id-sub-index, devuelve
+        //   un único item validando ownership en la KeyCondition.
+        // - cuit (sin task_id): Query sobre la tabla principal usando el
+        //   prefijo del sk (begins_with).
+        // - sin filtros: Query sobre la tabla principal listando todas las
+        //   simulaciones del tenant.
+        let queryParams;
+        if (task_id) {
+            queryParams = {
+                TableName: DYNAMODB_TABLE,
+                IndexName: "task-id-sub-index",
+                KeyConditionExpression: "task_id = :tid AND #sub = :sub",
+                ExpressionAttributeNames: { "#sub": "sub" },
+                ExpressionAttributeValues: { ":tid": task_id, ":sub": sub }
+            };
+        } else if (cuit) {
+            queryParams = {
+                TableName: DYNAMODB_TABLE,
+                KeyConditionExpression: "#sub = :sub AND begins_with(sk, :sk_prefix)",
+                ExpressionAttributeNames: { "#sub": "sub" },
+                ExpressionAttributeValues: { ":sub": sub, ":sk_prefix": `CUIT#${cuit}` }
+            };
+        } else {
+            queryParams = {
+                TableName: DYNAMODB_TABLE,
+                KeyConditionExpression: "#sub = :sub",
+                ExpressionAttributeNames: { "#sub": "sub" },
+                ExpressionAttributeValues: { ":sub": sub }
+            };
         }
 
         const data = await docClient.send(new QueryCommand(queryParams));
@@ -56,8 +68,8 @@ exports.handler = async (event) => {
         console.error("Error querying results:", error);
         return {
             statusCode: 500,
-            headers: { "Access-Control-Allow-Origin": "*" },
-            body: JSON.stringify({ error: "Error interno al consultar resultados" })
+            headers,
+            body: JSON.stringify({ error: "Error interno al consultar resultados", message: error.message })
         };
     }
 };

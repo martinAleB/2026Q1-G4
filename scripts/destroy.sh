@@ -1,10 +1,9 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/env.sh"
 
-# --- Confirmación manual ---
 read -p "Escribí 'destroy' para confirmar la destrucción TOTAL de la infraestructura: " CONFIRM
 if [ "$CONFIRM" != "destroy" ]; then
   echo "Cancelado."
@@ -14,7 +13,6 @@ fi
 bash "${SCRIPT_DIR}/terraform-init.sh"
 bash "${SCRIPT_DIR}/terraform-destroy.sh"
 
-# --- Limpieza local ---
 echo "==> Limpiando archivos temporales locales"
 rm -rf "${SCRIPT_DIR}/../frontend/dist"
 

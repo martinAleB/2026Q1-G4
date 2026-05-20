@@ -22,7 +22,12 @@ exports.handler = async (event) => {
     const clientId = process.env.COGNITO_CLIENT_ID;
     const cognitoDomain = process.env.COGNITO_DOMAIN;
     const frontendUrl = process.env.FRONTEND_URL;
-    const apiGatewayUrl = `https://${event.headers.host}${event.requestContext.http.path}`;
+    // El callback URL se inyecta como env var desde Terraform en lugar de
+    // reconstruirlo del Host header del request: un proxy podría mandar un
+    // Host forjado, y aunque Cognito valida redirect_uri contra los
+    // callback_urls registrados (lo cual ya bloquea el ataque), apuntar a
+    // un valor fijo de configuración es menos frágil.
+    const callbackUrl = process.env.CALLBACK_URL;
 
     const code = event.queryStringParameters?.code;
 
@@ -30,6 +35,14 @@ exports.handler = async (event) => {
         return {
             statusCode: 400,
             body: JSON.stringify({ error: "Falta el parámetro 'code' en la URL" }),
+        };
+    }
+
+    if (!callbackUrl) {
+        console.error("CALLBACK_URL env var no está configurada");
+        return {
+            statusCode: 500,
+            body: JSON.stringify({ error: "Error interno del servidor" }),
         };
     }
 
@@ -42,7 +55,7 @@ exports.handler = async (event) => {
             grant_type: 'authorization_code',
             client_id: clientId,
             code: code,
-            redirect_uri: apiGatewayUrl
+            redirect_uri: callbackUrl
         });
 
         const response = await fetch(tokenEndpoint, {
@@ -77,7 +90,7 @@ exports.handler = async (event) => {
         console.error("Internal Lambda error:", error);
         return {
             statusCode: 500,
-            body: JSON.stringify({ error: "Error interno del servidor" }),
+            body: JSON.stringify({ error: "Error interno del servidor", message: error.message }),
         };
     }
 };
