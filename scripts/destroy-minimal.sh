@@ -17,18 +17,14 @@ TF_INIT_ARGS=(
   -backend-config="dynamodb_table=${TF_LOCK_TABLE}"
 )
 
-# --- 2. Vaciar el bucket de S3 primero ---
-# Terraform no puede borrar un bucket si tiene archivos adentro.
 echo "==> Vaciando bucket de S3: ${TF_FRONTEND_BUCKET_NAME}"
 if aws s3 ls "s3://${TF_FRONTEND_BUCKET_NAME}" 2>&1 | grep -q 'NoSuchBucket'; then
   echo "El bucket ya no existe o no se puede acceder. Continuando..."
 else
-  # Usamos --quiet para no llenar la consola si hay muchos archivos
   aws s3 rm "s3://${TF_FRONTEND_BUCKET_NAME}" --recursive --quiet || true
   echo "Bucket vaciado."
 fi
 
-# --- 3. Terraform init + destroy (TARGENTEADO) ---
 echo "==> Inicializando Terraform"
 cd "${TF_DIR}"
 terraform init -reconfigure "${TF_INIT_ARGS[@]}"

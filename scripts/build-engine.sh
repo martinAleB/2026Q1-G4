@@ -25,9 +25,6 @@ echo "    OK ($(($(date +%s) - step_start))s)"
 echo "[$(date +%T)] Copiando código fuente..."
 cp -r backend/simulations/engine/* "${BUILD_DIR}/"
 
-# Trim build to fit under the 50 MB Lambda upload limit. Strips test dirs,
-# .dist-info metadata, the cpython-311/310 numpy artifacts we don't use, and
-# debug symbols from .so binaries.
 echo "[$(date +%T)] Ejecutando limpieza para bajar de 50MB..."
 
 find "${BUILD_DIR}" -type d -name "tests"      -exec rm -rf {} + 2>/dev/null || true

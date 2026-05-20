@@ -17,11 +17,9 @@ TF_INIT_ARGS=(
   -backend-config="dynamodb_table=${TF_LOCK_TABLE}"
 )
 
-# --- 2. Preparar Código de Lambdas ---
 echo "==> Generando paquete de la Lambda de Simulaciones"
 bash "${SCRIPT_DIR}/scripts/build-engine.sh"
 
-# --- 3. Terraform init + apply (TARGENTEADO) ---
 echo "==> Inicializando Terraform"
 cd "${TF_DIR}"
 terraform init -reconfigure "${TF_INIT_ARGS[@]}"
@@ -49,7 +47,6 @@ terraform apply -auto-approve \
   -target=aws_s3_bucket_public_access_block.frontend \
   -target=aws_s3_bucket_website_configuration.frontend
 
-# --- 4. Leer outputs de Terraform ---
 echo "==> Capturando Outputs de la infraestructura"
 BUCKET_NAME=$(terraform output -raw bucket_name)
 API_ENDPOINT=$(terraform output -raw api_endpoint)
@@ -59,11 +56,9 @@ if [ -z "$BUCKET_NAME" ] || [ -z "$API_ENDPOINT" ]; then
     exit 1
 fi
 
-# --- 5. Build frontend ---
 echo "==> Configurando y construyendo el frontend"
 cd "${SCRIPT_DIR}/frontend"
 
-# Creamos el .env de produccion estrictamente con lo necesario
 cat > .env.production << EOF
 VITE_SIMULATIONS_API_URL=${API_ENDPOINT}
 EOF
@@ -71,7 +66,6 @@ EOF
 npm ci
 npm run build
 
-# --- 6. Subir al bucket S3 ---
 echo "==> Subiendo frontend a S3 (${BUCKET_NAME})"
 aws s3 sync dist/ "s3://${BUCKET_NAME}" --delete
 
