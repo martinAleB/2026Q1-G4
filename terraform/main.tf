@@ -84,7 +84,7 @@ module "vpc" {
           from_port   = 443
           to_port     = 443
           cidr_blocks = ["0.0.0.0/0"]
-          description = "HTTPS to internet via NAT (BCRA API, Cognito, KMS, public S3)"
+          description = "HTTPS to internet via NAT (BCRA API, Cognito, KMS)"
         },
         {
           protocol    = "udp"
@@ -114,6 +114,12 @@ module "vpc" {
     {
       name         = "dynamodb"
       service      = "com.amazonaws.${var.aws_region}.dynamodb"
+      type         = "Gateway"
+      route_tables = ["private-rt-az-a", "private-rt-az-b"]
+    },
+    {
+      name         = "s3"
+      service      = "com.amazonaws.${var.aws_region}.s3"
       type         = "Gateway"
       route_tables = ["private-rt-az-a", "private-rt-az-b"]
     },
