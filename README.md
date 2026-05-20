@@ -1,42 +1,40 @@
-# Cloud Presti — Guía de ejecución
+# Presti - Cloud Computing
 
-Guía para desplegar la plataforma sobre AWS Academy y operarla desde el dashboard.
+El presente trabajo, realizado para la materia *Cloud Computing*, consiste en el desarrollo una motor de decisiones para Fintechs que busca mejorar el otorgamiento de productos crediticios (préstamos) a sus clientes minoritas. Para esto, se desarrolló una plataforma cloud que contiene un motor de machine learning que consulta los datos históricos de la *Central de Deudores del BCRA* y predice la situación creditica por los próximos meses.
 
-## Acerca del proyecto
+La plataforma cuenta principalmente con las siguientes funcionalidades representadas en su panel de control:
 
-Plataforma que sugiere productos propios de una Fintech para sus distintos clientes mediante un motor de scoring crediticio basado en datos del BCRA. Proyecto académico para la materia Cloud Computing (ITBA).
+- <b>Carga y Gestión de Productos</b>: Panel administrativo para que la Fintech gestione de forma directa su catálogo de ofertas financieras (préstmos de distintos montos, plazos, etc.) y les asigne prioridades según sus preferencias comerciales.
 
-### Arquitectura general
+- <b>Motor de Simulaciones</b>: Módulo para calcular en tiempo real el scoring de nuevos clientes ingresando su CUIT. Consulta información del BCRA, evalúa al deudor a través de un modelo de Deep Learning (MLP con TensorFlow/Keras) y ofrece recomendaciones inteligentes e instantáneas de productos elegibles.
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                          AWS (us-east-1)                             │
-│                                                                      │
-│   S3 (frontend estático)         VPC 10.0.0.0/16                     │
-│   ┌──────────────────┐           ┌─────────────────────────────────┐ │
-│   │  React + Vite    │  →  HTTP  │  Subnets públicas (NAT × 2)     │ │
-│   │  Dashboard SPA   │   API GW  │  Subnets privadas (Lambdas VPC) │ │
-│   └──────────────────┘           └─────────────────────────────────┘ │
-│           ↑                                                          │
-│           │ JWT (Cognito hosted UI)                                  │
-│           │                                                          │
-│   Cognito User Pool + Secrets Manager (client secret)                │
-│                                                                      │
-│   API Gateway HTTP API ──→ 14 Lambdas ──→ DynamoDB (5 tablas)        │
-│                                       └→ SQS → simulations-engine    │
-│                                                  ↓                   │
-│                                             BCRA (via NAT)           │
-│                                                  ↓                   │
-│                                          DynamoDB simulations        │
-│                                                                      │
-│   EventBridge cron mensual ──→ portfolio-updater Lambda              │
-│                                                                      │
-│   SQS DLQ + Lambda async DLQ + EventBridge target DLQ (3 capas)      │
-│   CloudWatch Log Groups con retention configurable                   │
-└──────────────────────────────────────────────────────────────────────┘
-```
+- <b>Configuración de Parámetros</b>: Sección dedicada a definir los parámetros y reglas globales del negocio de la Fintech (como los umbrales de score mínimo y criterios generales de exclusión) para filtrar automáticamente a solicitantes de alto riesgo.
 
-### Estructura del repositorio
+- <b>Control de Cartera</b>: Monitoreo continuo y centralizado del estado crediticio e historial de deudas de los CUITs en cartera. Permite visualizar tendencias de comportamiento de pagos (mejorando, empeorando o estable) y soporta tanto actualizaciones manuales como automáticas programadas (mediante crons mensuales).
+
+<details>
+  <summary>Contenidos</summary>
+  <ol>
+    <li><a href="#diagrama-de-arquitectura">Diagrama de Arquitectura</a></li>
+    <li><a href="#estructura-del-repositorio">Estructura del Repositorio</a></li>
+    <li><a href="#uso-de-la-aplicación-guía-de-ejecución">Uso de la Aplicación (Guía de Ejecución)</a></li>
+    <li><a href="#descripción-de-módulos">Descripción de Módulos</a></li>
+    <li><a href="#explicación-de-funciones-y-meta-argumentos">Explicación de Funciones y Meta-Argumentos</a></li>
+    <li><a href="#pipeline-de-github-actions-para-terraform">Pipeline de GitHub Actions (Terraform)</a></li>
+    <li><a href="#aclaraciones">Aclaraciones</a></li>
+    <li><a href="#integrantes">Integrantes</a></li>
+  </ol>
+</details>
+
+<p align="right">(<a href="#presti---cloud-computing">Volver</a>)</p>
+
+## Diagrama de Arquitectura
+
+![Architecture Diagram](./docs/architecture.png)
+
+<p align="right">(<a href="#presti---cloud-computing">Volver</a>)</p>
+
+## Estructura del Repositorio:
 
 ```
 cloud-presti/
@@ -52,419 +50,270 @@ cloud-presti/
     └── workflows/          # CI (validate) + apply / destroy / bootstrap manuales
 ```
 
-### Cómo funciona el scoring
+<p align="right">(<a href="#presti---cloud-computing">Volver</a>)</p>
 
-1. **Fuente de datos**: archivos del BCRA (`deudores.txt` + `24DSF.txt`).
-2. **Features**: ~23 variables por CUIT — situación actual, días de atraso, ratios de cobertura, tendencia a 24 meses, etc.
-3. **Modelo**: MLP (TensorFlow/Keras) → `Input → Dense(16, relu) → Dense(1, sigmoid)`.
-4. **Score**: valor continuo entre `0.0` (irrecuperable) y `10.0` (excelente).
-5. **Recomendación**: el dashboard muestra productos financieros elegibles según el score de cada cliente.
+## Uso de la Aplicación (Guía de Ejecución)
 
-Ver [`engine/README.md`](engine/README.md) para documentación detallada del pipeline de entrenamiento.
+A continuación se detalla la arquitectura de negocio y la guía de ejecución técnica paso a paso para el ciclo completo de la plataforma:
 
----
+### 1. Registro y Autenticación
+1. **Acceso al Portal**: El administrador de la Fintech accede a la plataforma (`website_endpoint`). Al seleccionar **Crear cuenta**, es redirigido a la **Cognito Hosted UI** administrada en AWS.
+2. **Registro e Inserción Automática (Post-Confirmation Trigger)**: Tras ingresar los datos bajo políticas estrictas de seguridad (mayúsculas, minúsculas, números, caracteres mínimos), Cognito envía un código OTP de confirmación al e-mail registrado. Al ingresarse este código y verificarse el usuario, se ejecuta el trigger asíncrono `fintech-post-confirmation` (Lambda Node.js). Éste inserta automáticamente el registro base de la Fintech en la tabla `fintech` con configuraciones por defecto (`max_situacion_crediticia = 2`, `max_entidades_con_deuda = 3`, etc.) para asegurar el aprovisionamiento inmediato.
+3. **Canje de Tokens e Interacción de Red (VPC Isolation Boundary)**: Al finalizar el registro, Cognito redirige al navegador de vuelta a la API Gateway (`GET /callback`), invocando la Lambda `auth-callback` (Node.js). Esta Lambda **se ejecuta en el espacio público (fuera de la VPC)** para poder comunicarse libremente y sin sobrecostos de NAT Gateways con los endpoints públicos de Cognito y el servicio Secrets Manager. Recupera el *client secret* del Secrets Manager (`${var.stack_name}/cognito/client-secret`), canjea el código por tokens JWT (Access, ID, Refresh) y redirige al frontend con los mismos.
 
-## 1. Descripción de módulos
+### 2. Configuración de Reglas y Parámetros de Negocio
+Desde el panel de control, la Fintech puede editar sus reglas de admisión globales (`PUT /fintech`), las cuales se persisten en la tabla `fintech`.
+* **Atributos de Negocio en DynamoDB**:
+  * `max_situacion_crediticia` (N): Límite superior de la situación permitida en BCRA (ej. 2).
+  * `max_entidades_con_deuda` (N): Cantidad máxima de entidades financieras que pueden reportar deuda simultáneamente (ej. 3).
+  * `max_deuda_total_ars` (N): Monto acumulado de deuda en ARS permitido (ej. 350,000 ARS).
+  * `min_meses_situacion_1` (N): Racha mínima exigida de meses consecutivos en situación normal 1 en el historial (ej. 6).
+  * `max_dias_atraso` (N): Días de retraso máximos tolerados en pagos (ej. 30).
+  * `permite_proceso_judicial` (BOOL): Flag de exclusión que, de ser falso, rechaza automáticamente a deudores con litigios o cobros judiciales en curso.
+* **Resiliencia de Carga**: Si la lectura de parámetros a nivel Lambda falla, se reintenta hasta 3 veces con *exponential backoff*. Si el ítem no existe o faltan campos individuales, el motor aplica de forma automática la colección `FINTECH_DEFAULTS` para salvaguardar la ejecución de la simulación.
 
-La infraestructura se organiza en un módulo interno reutilizable, un módulo público del registry y un stack de bootstrap independiente, todos compuestos por el root module.
+### 3. Alta y Catálogo de Productos Financieros
+Antes de simular, la Fintech define sus ofertas financieras en **Productos → Nuevo producto** (llamando a `POST /product`).
+* Cada producto se registra en la tabla `product` con clave compuesta `sub` (Hash, ID de la Fintech) y `product_id` (Range, UUID v4). Contiene:
+  * **Metadatos comerciales**: Nombre, Monto, Cantidad de Cuotas, Tasa de Interés y Prioridad (escala 1 a 10).
+  * **Parámetros de admisibilidad**: `min_score` y `max_score` definidos en una escala de `[0.0, 10.0]`. El motor los contrastará con el scoring del solicitante para sugerir la oferta comercial.
 
-### 1.1 Módulo raíz (`terraform/`)
+### 4. Ciclo de Ejecución de la Simulación y Motor de Inteligencia Artificial (ML)
+Al ingresar el CUIT de un cliente en **Nueva simulación**, se inicia un flujo reactivo asíncrono de alto rendimiento:
+1. **API Gateway (`POST /simulations`)**: Valida el JWT y delega el flujo a la Lambda `simulations-handler` dentro de la VPC.
+2. **Transacción Atómica (`TransactWriteItemsCommand`)**: Para garantizar consistencia relacional absoluta sin colisiones de carrera, la Lambda realiza exactamente **4 operaciones de escritura en una única transacción** sobre DynamoDB:
+   * **`Put` en `dynamodb_user`**: Vincula de forma permanente el CUIT consultado a la Fintech (`sub`).
+   * **`Update` en `dynamodb_portfolio`** (Clave `{pk: CUIT#<cuit>, sk: INFO}`): Siembra/inicializa el estado del deudor si es nuevo, asignándole `current_status = "1"`, `previous_status = "1"`, `trend = "stable"`, `last_updated = timestamp`, y `record_type = "INFO"`. Utiliza expresiones `if_not_exists` para no pisar datos históricos si el CUIT ya era trackeado por otra Fintech.
+   * **`Put` en `dynamodb_portfolio`** (Clave `{pk: CUIT#<cuit>, sk: FINTECH#<sub>}`): Registra la relación de seguimiento del deudor por parte de esta Fintech específica, configurando el GSI principal `gsi1` (`gsi1_pk = FINTECH#<sub>`, `gsi1_sk = CUIT#<cuit>`).
+   * **`Put` en `dynamodb_simulations`** (Clave `{sub: <sub>, sk: CUIT#<cuit>#TASK#<task_id>}`): Crea el registro inicial de la simulación marcándolo con `status = "PROCESSING"`.
+3. **Encolamiento en SQS**: Una vez comprometida la transacción en DynamoDB, la Lambda publica un mensaje en la cola SQS (`simulations-queue`) que contiene `{ task_id, cuit, sub, timestamp }` y devuelve de forma instantánea un `202 Accepted` al frontend con el `task_id` correspondiente.
+4. **Motor de Inferencia (`simulations-engine`)**:
+   * Esta Lambda (desarrollada en **Python 3.12** e integrada nativamente a SQS con un tamaño de lote de 1) es el núcleo inteligente.
+   * **Ciclo de Vida de los Artefactos ML**: A nivel de *Cold Start*, descarga de manera segura desde el bucket privado encriptado `${stack_name}-model-artifacts` los 4 componentes clave del modelo bajo el prefijo `v1/` y los almacena en memoria volátil local (`/tmp/artifacts`):
+     1. `modelo_crediticio.tflite` (Red Neuronal Multicapa - MLP en formato TensorFlow Lite).
+     2. `scaler_params.json` (Parámetros estadísticos de media y desviación estándar de entrenamiento).
+     3. `feature_columns.json` (Esquema de columnas e inputs requeridos por la red).
+     4. `feature_fill_values.json` (Valores de imputación para registros huérfanos).
+   * **Extracción de Variables (Feature Derivation)**: Invoca la API pública del BCRA (`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/Historicas/{cuit}`). A partir del payload JSON de respuesta, deriva dinámicamente un vector matemático compuesto por **20 features específicas**:
+     * *Variables Mensuales (10)*: `situacion` (situación deudora máxima del mes en curso), `prestamos_total` (monto total de deuda acumulada en miles de pesos), `dias_atraso_max` (días de atraso máximos registrados), `tiene_garantia_a` (default 0), `ratio_cobertura` (default 0.0), `refinanciado` (0 o 1 si posee refinanciaciones activas), `proceso_judicial` (0 o 1 si está en juicio), `recategorizado` (0 o 1 si posee recategorizaciones obligadas), `irrecuperable` (0 o 1 por disposición técnica), `cant_entidades` (total de acreedores).
+     * *Variables Históricas (10)*: `meses_en_sit1` (meses en situación normal 1 en los últimos 24 meses), `meses_sit_mala` (meses con situación >= 3), `peor_situacion_24m` (máxima situación registrada en el período de seguimiento), `tendencia_situacion` (pendiente lineal que contrasta el promedio de los últimos 3 meses contra los 9 meses previos), `racha_sit1_actual` (meses seguidos en situación 1 en la ventana histórica), `variacion_monto_12m` (ratio de crecimiento o decrecimiento interanual de la deuda), `monto_promedio_24m`, `monto_max_24m`, `meses_con_deuda` (conteo de meses con saldo activo), y `actividad` (categoría comercial, default 'desconocido').
+   * **Filtros de Exclusión Avanzados**: Evalúa si el perfil del solicitante colisiona con los parámetros definidos por la Fintech. Si se incumple alguna regla, detiene la inferencia, registra las causas exactas y actualiza el estado de la simulación a `REJECTED` en DynamoDB.
+   * **Inferencia en LiteRT / TFLite**: Si pasa los filtros, inicializa el intérprete de TFLite (`ai_edge_litert`), escala el vector de inputs según la fórmula `scaled_val = (val - mean) / scale` del Scaler de entrenamiento, alimenta la red neuronal y extrae un scoring continuo en el rango de `[0.0, 1.0]`. Actualiza el registro en la DB a `COMPLETED` inyectando el `score`.
+   * **Esquema de Reintentos Progresivos de SQS**: En caso de errores transitorios en la consulta externa al BCRA, el motor captura el error y realiza un **re-encolamiento progresivo a nivel de aplicación** en SQS incrementando el contador de intentos. Los retrasos entre reintentos se rigen por la secuencia `RETRY_DELAYS = [60, 120, 240, 480]` segundos. Si se agotan los 4 reintentos, el estado en DynamoDB se marca formalmente como `FAILED`. La SQS DLQ (`simulations-queue-dlq`) actúa como resguardo final de infraestructura de AWS ante pérdidas de red catastróficas.
 
-Compone el resto: declara la VPC mediante el módulo `network`, las 5 tablas DynamoDB, la cola SQS y su DLQ, las 14 Lambdas, el HTTP API de API Gateway, el User Pool de Cognito con su client secret en Secrets Manager, los CloudWatch Log Groups con retention, las metric alarms sobre el DLQ y las Lambdas críticas (`terraform/alarms.tf`), el EventBridge cron del portfolio updater y el bucket S3 del frontend. Centraliza en `locals.tf` los catálogos de Lambdas, integraciones y rutas para evitar duplicación de código. Ver [`terraform/README.md`](terraform/README.md) para el detalle archivo por archivo.
+* **Los Cinco Estados de una Simulación**:
+  | Estado | Disparador y Significado |
+  | :--- | :--- |
+  | `PROCESSING` | CUIT encolado en SQS, esperando ejecución del motor de inferencia. |
+  | `COMPLETED` | Inferencia exitosa. Contiene el scoring continuo `score` en el rango `[0.0, 1.0]`. |
+  | `REJECTED` | El deudor no cumple con los filtros y umbrales mínimos del negocio. Almacena en `rejection_reasons` la lista de reglas violadas. |
+  | `NO_DATA` | Se activa ante una excepción no recuperable del tipo `NoRetryError` (ej. CUIT inexistente en BCRA con HTTP 404, o historial financiero con menos de 7 períodos mínimos). Evita reintentos inútiles y protege la API. |
+  | `FAILED` | Errores de infraestructura no controlados (ej. blips graves de red del BCRA o caídas de AWS). Almacena el `error_message`. |
 
-### 1.2 Módulo `network` (`terraform/modules/network/`)
+### 5. Resolución e Inteligencia de Recomendaciones
+Una vez que la simulación cambia a `COMPLETED`, el frontend invoca `GET /recommendations?task_id=<id>`.
+1. **Optimización de Lectura**: La Lambda `recommendations-get` consulta de manera extremadamente eficiente la tabla `simulations` utilizando el índice **GSI `task-id-sub-index`** (`task_id` de hash y `sub` de range). Esto garantiza el aislamiento multi-inquilino de las Fintechs y evita la lectura de registros pertenecientes a otros clientes.
+2. **Escalabilidad de Scoring**: Multiplica el score obtenido del motor (`[0.0, 1.0]`) por 10, mapeándolo a la escala continua de `[0.0, 10.0]`.
+3. **Clasificación y Reglas de Desempate (Ranking)**:
+   * Contrasta el score final x10 con los límites `[min_score, max_score]` de los productos vigentes de la Fintech.
+   * **Elegibles**: Aquellos productos cuyos rangos contienen el score del deudor. Se ordenan de forma descendente por prioridad comercial (`priority DESC`). **Ante empates de prioridad comercial, se resuelve de manera alfabética ascendente utilizando el nombre del producto (`localeCompare`)**, logrando un comportamiento predecible y uniforme.
+   * **No Elegibles**: Aquellos fuera del rango del score. El backend estructura y devuelve la razón técnica de la exclusión (ej. *"Score X por debajo del mínimo Y"* o *"Score X por encima del máximo Y"*).
 
-Módulo interno que encapsula la VPC y su plano de red. Es declarativo: recibe listas de configuración y materializa los recursos correspondientes.
+### 6. Monitoreo de Cartera (Portfolio) y Control de Duplicación
+* **Visualización Eficiente (`GET /portfolio`)**: La Lambda `portfolio-get` recupera los clientes trackeados utilizando la clave inversa en el **GSI `gsi1`** de la tabla `portfolio` (`gsi1_pk = FINTECH#<sub>`), permitiendo paginación nativa y lecturas a bajo costo.
+* **Módulo de Actualización del Portfolio (`portfolio-updater`)**:
+  * Se ejecuta de manera programada mediante una regla de EventBridge (`cron(0 10 1 * ? *)`) el día 1 de cada mes o mediante invocación manual (`POST /portfolio/refresh`).
+  * **Optimización de Iteración (Sparse GSI)**: Consulta el índice sparse `record-type-pk-index` buscando la clave `record_type = "INFO"`. Dado que es sparse, DynamoDB solo indexa los ítems que contienen este atributo (los registros base de datos de los CUITs), omitiendo todos los registros de relación Fintech-CUIT. Esto permite iterar la cartera global a una fracción minúscula del costo, erradicando los `Scan` globales.
+  * **Control Anti-Duplicación de Consultas al BCRA**: Cada vez que se evalúa un CUIT, la Lambda compara el campo `last_processed_period` contra el período actual en formato `YYYY-MM`. Si ya coincide, **omite la consulta para evitar consumir de forma duplicada la API externa del BCRA** durante el mismo mes.
+  * **Manejo de Situaciones y Derivación de Tendencia**:
+    * Si el BCRA devuelve HTTP 404 (sin datos), marca `last_processed_period = currentPeriod` para saltear futuros intentos en el mes, pero mantiene intacto el estado crediticio histórico almacenado.
+    * En caso de contar con datos, extrae la máxima situación crediticia del período más reciente (situación del mes 0 entre 1 y 6).
+    * Compara esta situación con la previa (`current_status` actual, por defecto "1").
+    * Calcula la **Tendencia (Trend)**:
+      * Si la nueva situación es numérica mayor que la previa -> `trend = "down"` (el deudor empeoró su estado).
+      * Si la nueva situación es numérica menor que la previa -> `trend = "up"` (el deudor mejoró su comportamiento).
+      * Si son iguales -> `trend = "stable"`.
+    * Si ocurre un cambio de estado, actualiza de manera transaccional `current_status`, `previous_status`, `trend` y `last_updated`. En cualquier caso de éxito o 404, actualiza `last_processed_period` al mes en curso.
 
-**Inputs principales:**
+<p align="right">(<a href="#presti---cloud-computing">Volver</a>)</p>
 
-| Input | Tipo | Descripción |
-|---|---|---|
-| `vpc_config` | `object` | Nombre, CIDR y región de la VPC |
-| `subnets_config` | `list(object)` | Subnets con AZ y flag `nat_gateway` |
-| `route_tables_config` | `list(object)` | Route tables con sus rutas (target `igw` o `nat`) y subnets asociadas |
-| `security_groups_config` | `list(object)` | Security groups con reglas inbound/outbound, soporta referencias cruzadas por nombre |
-| `vpc_endpoints_config` | `list(object)` | VPC endpoints (Gateway o Interface) con sus subnets / route tables / SGs asociados |
+## Descripción de Módulos
 
-**Outputs:** `vpc_id`, `subnet_ids` (mapa CIDR→ID), `route_table_ids` (mapa nombre→ID), `security_group_ids` (mapa nombre→ID), `nat_gateway_ids`, `vpc_endpoint_ids` (mapa nombre→ID).
+El proyecto se estructura bajo un enfoque modular, limpio y escalable con las siguientes definiciones de infraestructura en Terraform:
 
-**Recursos creados:** `aws_vpc`, `aws_subnet`, `aws_internet_gateway`, `aws_eip`, `aws_nat_gateway`, `aws_route_table`, `aws_route`, `aws_route_table_association`, `aws_security_group`, `aws_security_group_rule`, `aws_vpc_endpoint`.
+### 1. Módulo Raíz (`terraform/`)
+Es el punto de entrada y composición arquitectónica del proyecto. Orquesta y compone la infraestructura global:
+* Declara la red mediante la invocación del módulo local `network`.
+* Configura los recursos del Core de AWS: 5 tablas de DynamoDB (a través del módulo del registry oficial), la cola SQS principal y su DLQ, las 14 Lambdas del backend, la API HTTP de API Gateway, el User Pool de Cognito, Secrets Manager para el resguardo seguro del client secret, y el S3 que sirve el frontend estático.
+* Centraliza en `locals.tf` todos los diccionarios y colecciones (`lambda_sources`, `lambda_configs`, `lambda_permissions`, `api_integrations`, `api_routes`) para alimentar los recursos iterativamente, reduciendo la duplicación y el hardcoding.
+* **Bucket de Artefactos de ML (`model-artifacts`)**: Un bucket privado S3 (`${var.stack_name}-model-artifacts`) con versionado habilitado, cifrado por defecto AES256, políticas `BucketOwnerEnforced` y bloqueo de acceso público estricto. Aloja los artefactos v1 del modelo neuronal (`modelo_crediticio.tflite`, `scaler_params.json`, `feature_columns.json`, `feature_fill_values.json`) consumidos por las Lambdas de inferencia.
+* **Alarmas de CloudWatch (`alarms.tf`)**:
+  * **Alarma de cola muerta (`dlq_messages_visible`)**: Monitorea si hay mensajes en la DLQ (`simulations-queue-dlq`) mediante la métrica `ApproximateNumberOfMessagesVisible` superior a 0 en ventanas de 5 minutos, indicando fallas persistentes de infraestructura en las simulaciones.
+  * **Alarmas de Lambdas críticas (`lambda_errors`)**: Crea alarmas de error dinámicas usando `for_each` sobre las 4 funciones más críticas (`simulations-engine`, `simulations-handler`, `fintech-post-confirmation` y `portfolio-updater`). Reportan si la métrica de `Errors` es mayor a 0 en cualquier período de 5 minutos.
 
-Ver [`terraform/modules/network/README.md`](terraform/modules/network/README.md) para ejemplos completos de uso.
+### 2. Módulo Interno de Red (`terraform/modules/network/`)
+Módulo local reutilizable que encapsula el aprovisionamiento de la VPC y el plano de red seguro:
+* **Entradas Declarativas**: Recibe configuraciones en variables de tipo objeto (`vpc_config`, `subnets_config`, `route_tables_config`, `security_groups_config`, `vpc_endpoints_config`).
+* **Aislamiento y Topografía**: Crea subnets públicas (para NAT Gateways e Internet Gateway) y privadas. Las 13 Lambdas del Core de negocio se despliegan strictly in-VPC en subnets privadas, garantizando que estén aisladas de la red pública. La única excepción es `auth-callback`, que reside en el espacio público de AWS para interactuar de forma ágil con Cognito y Secrets Manager.
+* **Seguridad y Endpoints**: Implementa Security Groups con soporte para referencias cruzadas (por ejemplo, permitir tráfico únicamente del Security Group de Lambdas hacia los VPC Interface Endpoints).
+* **VPC Endpoints**: Crea 3 endpoints para mantener el tráfico de red interno en la red troncal de AWS:
+  * **Gateway Endpoint para DynamoDB**: Asociado a las tablas de ruteo privadas.
+  * **Gateway Endpoint para S3**: Asociado a las tablas de ruteo privadas (usado para la descarga del modelo crediticio).
+  * **Interface Endpoint para SQS (Private Link)**: Utiliza subnets privadas y asocia un Security Group exclusivo (`interface-endpoints-sg`) que restringe el acceso de puertos HTTPS únicamente al Security Group de las Lambdas (`lambda-sg`).
 
-### 1.3 Módulo público `terraform-aws-modules/dynamodb-table/aws` v4.4.0
+### 3. Módulo Público de DynamoDB (`terraform-aws-modules/dynamodb-table/aws` v4.4.0)
+Módulo del registry oficial instanciado **5 veces** para proveer persistencia aislada a nivel de tabla bajo demanda (`billing_mode = PAY_PER_REQUEST`):
+1. **`dynamodb_simulations`** (`${stack_name}-simulations`):
+   * Hash key: `sub` | Range key: `sk`.
+   * **GSI `task-id-sub-index`**: Indexa `task_id` (Hash) y `sub` (Range). Permite a `recommendations-get` y `simulations-results` buscar directamente por el ID de la tarea de forma sumamente rápida, garantizando aislamiento multi-inquilino.
+2. **`dynamodb_fintech`** (`${stack_name}-fintech`):
+   * Hash key: `sub` (parámetros globales de la Fintech).
+3. **`dynamodb_product`** (`${stack_name}-product`):
+   * Hash key: `sub` | Range key: `product_id` (catálogo de créditos de la Fintech).
+4. **`dynamodb_user`** (`${stack_name}-user`):
+   * Hash key: `sub` | Range key: `cuit` (vínculo entre Fintech y CUITs consultados).
+5. **`dynamodb_portfolio`** (`${stack_name}-portfolio`):
+   * Hash key: `pk` | Range key: `sk`.
+   * **GSI `gsi1`**: Indexa `gsi1_pk` y `gsi1_sk` para la resolución inversa Fintech -> CUIT.
+   * **Sparse GSI `record-type-pk-index`**: Indexa `record_type` (Hash) y `pk` (Range). Al ser sparse, solo almacena ítems del tipo `INFO`, lo que permite al actualizador mensual iterar únicamente los CUITs de forma ágil y barata sin incurrir en `Scan` globales costosos sobre registros de control.
 
-Módulo del registry oficial, instanciado **cinco veces** para crear las tablas:
+### 4. Stack de Bootstrap (`terraform-bootstrap/`)
+Un stack independiente y aislado cuyo único objetivo es la creación de los recursos de soporte para la ejecución remota de Terraform:
+* Un bucket S3 con encriptación AES256, versionado activo y bloqueo estricto de acceso público para almacenar el backend state de Terraform de forma segura.
+* Una tabla de DynamoDB para el control de concurrencia y bloqueo de estado (`LockTable`), previniendo colisiones en despliegues concurrentes.
 
-| Tabla (módulo) | Nombre AWS | Hash key | Range key | Propósito |
-|---|---|---|---|---|
-| `dynamodb_simulations` | `${stack_name}-simulations` | `sub` | `sk` | Resultados de las simulaciones |
-| `dynamodb_fintech` | `${stack_name}-fintech` | `sub` | — | Parámetros generales de cada fintech |
-| `dynamodb_product` | `${stack_name}-product` | `sub` | `product_id` | Catálogo de productos de cada fintech |
-| `dynamodb_user` | `${stack_name}-user` | `sub` | `cuit` | Relación fintech ↔ CUIT consultado |
-| `dynamodb_portfolio` | `${stack_name}-portfolio` | `pk` | `sk` (+ `gsi1` inverso + `record-type-pk-index` sparse) | Monitoreo continuo del estado crediticio de CUITs trackeados |
+<p align="right">(<a href="#presti---cloud-computing">Volver</a>)</p>
 
-Todas usan `billing_mode = PAY_PER_REQUEST`. Tres GSIs declarados:
+## Explicación de Funciones y Meta-Argumentos
 
-- `dynamodb_simulations.task-id-sub-index` (hash `task_id`, range `sub`): lookup directo por `task_id` para `recommendations-get` y `simulations-results`, sin tener que hacer Query por `sub` + `FilterExpression`. La range key `sub` mantiene aislamiento por tenant en la propia KeyCondition.
-- `dynamodb_portfolio.gsi1` (hash `gsi1_pk`, range `gsi1_sk`): relación inversa fintech → cuit, leída por `portfolio-get`.
-- `dynamodb_portfolio.record-type-pk-index` (hash `record_type`, range `pk`): **sparse GSI** que solo indexa los items `INFO` (las filas `FINTECH#<sub>` no tienen el atributo `record_type`). Usado por el cron `portfolio-updater` para iterar todos los CUITs trackeados sin Scan + FilterExpression.
+El diseño de la infraestructura en Terraform utiliza avanzadas metodologías de programación declarativa y validaciones rigurosas:
 
-### 1.4 Stack de bootstrap (`terraform-bootstrap/`)
+### 1. Meta-Argumentos Utilizados
+* **`for_each`**: Es el motor de la iteración. Evita la duplicación masiva de código instanciando múltiples recursos dinámicamente. Se utiliza para:
+  * Las 13 Lambdas del Core y sus configuraciones detalladas.
+  * Los 14 grupos de logs en CloudWatch (asegurando el ciclo de vida coordinado con cada función).
+  * Los permisos de invocación y mapeo de triggers.
+  * La creación modular de las 5 tablas DynamoDB.
+  * La definición de subnets, tablas de ruteo, reglas de seguridad y endpoints en el módulo `network`.
+  * La asignación de alarmas de CloudWatch para métricas de error.
+* **`dynamic`**: Utilizado para inyectar bloques configurativos anidados condicionalmente. En `aws_lambda_function.lambdas`, se aplica en:
+  * `vpc_config`: Inyecta la red únicamente a las Lambdas que tienen configurado `in_vpc = true`.
+  * `dead_letter_config`: Asocia la DLQ solo a aquellas Lambdas asíncronas registradas para opt-in en `local.lambda_async_dlq_arns`.
+* **`lifecycle` y `precondition`**: Bloques para definir políticas de ciclo de vida e invariantes de negocio/arquitectura que detienen tempranamente la ejecución antes de causar inconsistencias en AWS:
+  * **En `aws_route`**: Valida que si una ruta apunta a un target `nat`, la tabla de ruteo solo contenga subnets de una única Zona de Disponibilidad (AZ) y que exista un NAT Gateway aprovisionado en dicha AZ.
+  * **En `aws_vpc_endpoint`**: Exige que el tipo sea "Gateway" o "Interface", validando que los endpoints Gateway tengan tablas de ruteo asociadas y que los endpoints Interface tengan subnets asociadas.
+* **`depends_on`**: Declara dependencias de orden explícitas. Garantiza que los `aws_cloudwatch_log_group.lambdas` se creen estrictamente antes que las `aws_lambda_function` (previniendo que las Lambdas auto-generen grupos sin retención que hinchen el presupuesto), y que el build del frontend (`terraform_data.build_frontend`) comience recién cuando Cognito, la API y S3 estén listos.
+* **`provider`**: Permite definir múltiples configuraciones. Se utiliza a nivel root con el bloque `default_tags` para propagar automáticamente tags globales (`Project`, `Environment`, `ManagedBy`, `Repository`) a todo recurso que soporte etiquetado en AWS.
 
-Stack independiente que crea el bucket S3 del state remoto (versionado, encriptado AES256, public access bloqueado) y la tabla DynamoDB de locking. Se aplica una sola vez por entorno antes de cualquier `terraform apply` del stack principal. Ver [`terraform-bootstrap/README.md`](terraform-bootstrap/README.md).
+### 2. Funciones de Terraform Empleadas
+* **`flatten()`**: Aplana listas anidadas de objetos en una colección lineal. Esencial para iterar colecciones complejas como la de permisos de Lambdas (`local.lambda_permissions`) o las reglas complejas de ruteo y security groups en el módulo de red.
+* **`for ... in ...`**: Comprensión sintáctica para construir mapas y listas filtradas o transformadas en tiempo real. Por ejemplo: `[for cidr in var.private_subnet_cidrs : module.vpc.subnet_ids[cidr]]` para mapear los rangos CIDR a IDs de subnets reales provistos por el módulo de red.
+* **`concat()`**: Combina múltiples listas en una sola. Usado para agrupar el set de Lambdas regulares y la Lambda especial `auth-callback` en una lista consolidada para los CloudWatch Log Groups.
+* **`lookup()`**: Busca una clave en un mapa de forma segura, retornando un valor por defecto si no existe (por ejemplo, resolver los DLQ ARNs opt-in sin arrojar errores de referencia nula).
+* **`jsonencode()`**: Serializa objetos y estructuras de datos nativas de Terraform a strings JSON válidos. Usado para empaquetar la bucket policy del frontend de S3 y el `redrive_policy` de la cola SQS.
+* **`filemd5()`**: Calcula el hash MD5 del script de despliegue del frontend, utilizándolo dentro de los triggers de reemplazo en `terraform_data` para forzar un rebuild automático y sincronización a S3 solo cuando el script o configuraciones clave varían.
+* **`length()`, `contains()`, `keys()`, `distinct()`, `toset()`**: Utilidades nativas de manipulación y validación de colecciones para verificar condiciones de ruteo y saneamiento de variables.
 
----
+### 3. Otros Recursos Destacados
+* **`data "archive_file"`**: Empaqueta el código de cada Lambda en archivos ZIP al vuelo durante el ciclo del plan/apply. El cálculo nativo de su `source_code_hash` permite que Terraform detecte cambios en el código de NodeJS/Python y redespliegue únicamente las Lambdas modificadas.
+* **`data "aws_iam_role"`**: Referencia y consume el rol preexistente `LabRole` provisto por AWS Academy, necesario por las severas restricciones del entorno educativo.
+* **`aws_cloudwatch_log_group`**: Declara explícitamente los grupos de logs para configurar una retención estricta de 7 días, previniendo costos descontrolados por retención indefinida (default de AWS).
 
-## 2. Explicación de funciones y meta-argumentos
+<p align="right">(<a href="#presti---cloud-computing">Volver</a>)</p>
 
-### 2.1 Meta-argumentos
+## Pipeline de GitHub Actions (Terraform)
 
-| Meta-argumento | Uso en el proyecto |
-|---|---|
-| `for_each` | Instancia múltiples recursos del mismo tipo desde un mapa. Se usa para las 14 Lambdas, sus permisos, integraciones y rutas del HTTP API, los 14 CloudWatch Log Groups, las subnets, route tables, security groups y VPC endpoints del módulo `network`, las 5 tablas DynamoDB invocadas como módulos y las alarmas de errores por Lambda crítica |
-| `dynamic` | Bloque condicional para argumentos anidados. En `aws_lambda_function.lambdas` envuelve `vpc_config` para inyectarlo solo cuando `each.value.in_vpc == true`, y `dead_letter_config` para Lambdas async opt-in vía `local.lambda_async_dlq_arns` |
-| `lifecycle` + `precondition` | Validaciones tempranas en `aws_route` y `aws_vpc_endpoint` del módulo `network`: garantizan invariantes (route `target = "nat"` requiere subnets en la misma AZ con NAT presente; tipo de VPC endpoint válido; campos requeridos por tipo) |
-| `depends_on` | Orden explícito: `aws_lambda_function` depende de `aws_cloudwatch_log_group.lambdas` para que el log group con retention exista antes; `terraform_data.build_frontend` depende de Cognito, API Gateway y bucket S3 |
-| `provider` | Configurado a nivel root con `default_tags` que propagan `Project`, `Environment`, `ManagedBy` y `Repository` a todos los recursos taggables |
-| `count` | No se utiliza; toda iteración pasa por `for_each` para identidades estables por clave |
+El proyecto cuenta con un esquema de Integración Continua (CI) robusto que automatiza las tareas de aseguramiento de calidad del código de infraestructura en cada cambio.
 
-### 2.2 Funciones
+### 1. Validación de Infraestructura en CI (`ci.yml`)
+Cada vez que se sube código o se genera un Pull Request, se ejecuta el workflow de validación. Este workflow realiza pruebas de sintaxis, formato y coherencia arquitectónica **sin inicializar recursos en AWS (`-backend=false`)** para actuar de forma sumamente rápida:
 
-| Función | Uso en el proyecto |
-|---|---|
-| `flatten()` | Aplana listas anidadas para alimentar `for_each`. Usado en `locals.tf` (permisos de Lambda) y en el módulo `network` (rutas y reglas de SG) |
-| `for ... in ...` | Expresiones para construir mapas y listas dinámicamente, e.g. los `subnet_ids` del VPC config se derivan de `var.private_subnet_cidrs` |
-| `concat()` | Compone listas heterogéneas: orígenes CORS (bucket + extras) y conjunto completo de Lambdas para los log groups (`for_each` map + auth-callback standalone) |
-| `lookup()` | Acceso seguro a mapas con default: `lookup(local.lambda_async_dlq_arns, each.key, null)` para que solo las Lambdas async opt-in tengan DLQ |
-| `jsonencode()` | Serializa la bucket policy del frontend y el `redrive_policy` de SQS |
-| `filemd5()` | Genera el hash del script `build-frontend.sh` y lo incluye en `triggers_replace` de `terraform_data` |
-| `length()`, `contains()`, `keys()`, `distinct()`, `toset()` | Utilidades de manipulación de colecciones para preconditions y composición de mapas |
+```yaml
+jobs:
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-latest
 
-### 2.3 Otros recursos relevantes
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-- **`data "archive_file"`**: empaqueta el código fuente de cada Lambda en un ZIP durante el plan/apply. El `source_code_hash` se calcula automáticamente, por lo que un cambio en el código dispara redeploy.
-- **`data "aws_iam_role" "lab_role"`**: referencia al rol preexistente `LabRole` de AWS Academy, único IAM role disponible (no se pueden crear roles en el lab).
-- **`terraform_data.build_frontend`**: ejecuta `local-exec` con `scripts/build-frontend.sh`. Sus `triggers_replace` (cognito_domain, client_id, api_endpoint, bucket_name, hash del script) garantizan rebuild ante cualquier cambio relevante.
-- **`aws_secretsmanager_secret` + `secret_version`**: guardan el client secret de Cognito. La Lambda `auth-callback` lo lee en runtime con cache a nivel de módulo, evitando inyección como env var plana.
-- **`aws_sqs_queue.main_dlq`**: dead letter queue compartida. Apuntan ahí: el SQS principal (via `redrive_policy`), las Lambdas async opt-in `portfolio-updater` y `fintech-post-confirmation` (via `dead_letter_config`), y el EventBridge target del cron mensual.
-- **`aws_cloudwatch_log_group.lambdas`**: 14 log groups creados explícitamente para fijar `retention_in_days` (default 7) y evitar logs "Never expire" que sangran el budget.
-- **`aws_cloudwatch_event_rule.portfolio_updater`**: regla cron mensual que dispara la Lambda de portfolio updates.
-- **`local.lambda_defaults`**: defaults compartidos (handler, runtime, timeout, memory) entre el `for_each` y `aws_lambda_function.auth_callback` standalone (separada por dependencia cíclica con Cognito).
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9"
+          terraform_wrapper: false
 
----
+      - name: Terraform Init
+        run: terraform init -backend=false
+        working-directory: terraform
 
-## 3. Requisitos
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        working-directory: terraform
+        continue-on-error: true
 
-- Cuenta AWS Academy Learner Lab con sesión activa (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`). Las credenciales vencen cada 4–12 h.
-- Fork del repositorio `cloud-presti` en GitHub.
-- Para despliegue local: Terraform ≥ 1.9, AWS CLI v2, Node.js ≥ 20, `uv`, `bash`.
-
-### 3.1 Setup del clone (una sola vez por desarrollador)
-
-El repo incluye `.pre-commit-config.yaml` con hooks de `terraform fmt`, `terraform validate`, TFLint y Checkov que corren automáticamente en cada `git commit`. Para activarlos en tu clone:
-
-```bash
-pip install pre-commit
-pre-commit install
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: terraform
 ```
 
-A partir de ahí, los hooks corren solos. Para correrlos manualmente sobre todo el repo:
+El mismo job se ejecuta en paralelo para el stack de **bootstrap** (`terraform-bootstrap/`) y para el módulo aislado de **red** (`terraform/modules/network/`), garantizando que cualquier error de sintaxis o rotura interna de variables en el módulo modularizado sea detectado de inmediato.
 
-```bash
-pre-commit run --all-files
+### 2. Pipeline de Despliegue con Plan Guardado (`terraform-apply.yml`)
+Para los despliegues formales en la rama principal (`main`), el pipeline de ejecución remota de Terraform implementa las mejores prácticas de infraestructura como código (IaC):
+1. **Inicialización (`terraform init`)**: Se conecta al backend de S3 remoto configurando los locks en DynamoDB.
+2. **Validación y Chequeo de Formato (`validate` y `fmt`)**: Valida la integridad del código.
+3. **Plan Guardado (`terraform plan -out=tfplan`)**: Genera el plan de ejecución y lo persiste en un archivo físico binario (`tfplan`). Esto garantiza que los cambios planificados y auditados sean **exactamente los mismos** que se aplicarán en el paso posterior, mitigando problemas por drifts de estado de último segundo.
+4. **Aplicación del Plan (`terraform apply tfplan`)**: Ejecuta los cambios de manera directa y predecible.
+
+```yaml
+      - name: Terraform Init
+        run: bash scripts/terraform-init.sh
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        working-directory: terraform
+        continue-on-error: true
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: terraform
+
+      - name: Terraform Plan
+        run: terraform plan -no-color -out=tfplan
+        working-directory: terraform
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main'
+        run: terraform apply tfplan
+        working-directory: terraform
 ```
 
-> **Nota**: los hooks de TFLint y Checkov requieren las herramientas instaladas localmente (`brew install tflint` y `pip install checkov`). Si no las tenés, esos hooks fallan al commit — comentalos en `.pre-commit-config.yaml` o instalalos.
+<p align="right">(<a href="#presti---cloud-computing">Volver</a>)</p>
 
----
+## Aclaraciones
 
-## 4. Configuración inicial en GitHub
+Algunas aclaraciones finales con respecto a las funcionalidades y robustez de este trabajo:
+* <b>Resolución de Recomendaciones</b>: La asignación y ranking de ofertas financieras elegibles y no elegibles se procesa de forma integral y determinista en el backend a través del endpoint `GET /recommendations` (Lambda `recommendations-get`), garantizando que la lógica de negocio esté centralizada en la nube y que el frontend reciba directamente la clasificación de admisibilidad y orden comercial.
+* <b>API BCRA</b>: La funcionalidad de la API provista por el BCRA no es consistente, algunas veces las request logran llegar a destino y se obtiene una respuesta, pero otras no. Se intentó de distintas formas y con distintos headers, y se dejó de forma definitiva la configuración que mejores resultados arrójo.
+* <b>Resiliencia ante Caídas del BCRA</b>: Dado que el BCRA es una API gubernamental externa sujeta a intermitencias breves, el motor inteligente de scoring implementa reintentos progresivos a nivel de aplicación con retrasos de 1, 2, 4 y 8 minutos (`RETRY_DELAYS`) para asegurar una alta tasa de éxito final sin degradar la experiencia de usuario.
+* <b>Funcionalidad como API para Fintechs</b>: El sistema está diseñado modularmente como una colección de microservicios RESTful expuestos bajo autorización JWT, permitiendo una integración transparente no solo desde nuestro SPA de React, sino también directamente desde sistemas backend de terceros.
 
-En **Settings → Secrets and variables → Actions** del fork:
+<p align="right">(<a href="#presti---cloud-computing">Volver</a>)</p>
 
-**Secrets** (se renuevan en cada sesión del lab):
+## Integrantes:
 
-| Secret | Origen |
-|---|---|
-| `AWS_ACCESS_KEY_ID` | AWS Academy → Start Lab → AWS Details → AWS CLI |
-| `AWS_SECRET_ACCESS_KEY` | ídem |
-| `AWS_SESSION_TOKEN` | ídem |
+Barnatán, Martín Alejandro (64463) - mbarnatan@itba.edu.ar
 
-**Variables** (una sola, por desarrollador):
+Gonzalez Cornet, Josefina (64550) - jgonzalezcornet@itba.edu.ar
 
-| Variable | Descripción | Ejemplo |
-|---|---|---|
-| `STACK_NAME` | Prefijo único de este deployment. Cada integrante del equipo usa su propio valor para no chocar con los demás (los nombres globales de S3, los IDs de DynamoDB, etc. se derivan automáticamente de esto) | `tincho-presti` |
+Hillar, Conrado (64633) - chillar@itba.edu.ar
 
-Los nombres del bucket de state, lock table y bucket del frontend se derivan automáticamente:
+Maruottolo Quiroga, Ignacio Martín (64611) - imaruottoloquiroga@itba.edu.ar
 
-- `state_bucket = ${STACK_NAME}-state-bucket`
-- `lock_table = ${STACK_NAME}-lock-table`
-- `frontend_bucket = ${STACK_NAME}-frontend-bucket`
+Ignacio Pedemonte Berthoud (64908) - ipedemonteberthoud@itba.edu.ar
 
----
+Thomas, Philippe (69250) - phthomas@itba.edu.ar
 
-## 5. Despliegue por GitHub Actions (recomendado)
-
-### 5.1 Bootstrap
-
-Crea el bucket de state y la tabla de lock. Se ejecuta **una sola vez por entorno** (o cuando AWS Academy resetea el lab por completo).
-
-1. **Actions → Bootstrap Apply → Run workflow**.
-2. Esperar que termine en verde.
-
-### 5.2 Apply
-
-1. Verificar que los tres Secrets de AWS estén vigentes.
-2. **Actions → Terraform Apply → Run workflow**.
-
-El workflow encadena dos jobs:
-
-- **`infrastructure`**: instala dependencias de las Lambdas, builda el engine Python, inicializa el backend remoto, valida, hace `terraform plan -out=tfplan`, aplica ese plan exacto, y captura los outputs.
-- **`frontend`**: genera `.env.production` con los outputs reales, compila el SPA y sincroniza `dist/` al bucket S3.
-
-Al finalizar, el output `website_endpoint` contiene la URL pública del frontend.
-
-### 5.3 Reaplicar
-
-Cualquier cambio en `terraform/`, `backend/` o `frontend/` se propaga reejecutando **Terraform Apply**. El plan es incremental — solo aplica deltas.
-
-### 5.4 CI (PR validation)
-
-El workflow `CI` corre en cada push y PR. Valida en paralelo:
-
-- **`terraform`**: `fmt -check` + `validate` del stack principal.
-- **`terraform-bootstrap`**: idem del bootstrap.
-- **`terraform-module-network`**: validate del módulo aislado, atrapa errores que el for_each desde el root no detecta.
-- **`engine-build`**: corre `build-engine.sh` completo y verifica que los artefactos esperados (numpy, ai-edge-litert, tflite model) estén en el bundle.
-- **`frontend`**: `npm ci` + `npm run build` con un `.env.production` dummy.
-
-Los hooks de `pre-commit` (sección 3.1) replican localmente las verificaciones críticas antes de commit.
-
----
-
-## 6. Despliegue local (alternativo)
-
-Asume que el bootstrap ya corrió, o que se ejecutará localmente en el paso 6.2.
-
-### 6.1 Variables de entorno
-
-```bash
-export AWS_ACCESS_KEY_ID=...
-export AWS_SECRET_ACCESS_KEY=...
-export AWS_SESSION_TOKEN=...
-
-# Una sola variable identifica tu stack. scripts/env.sh deriva el resto.
-export STACK_NAME=tincho-presti
-```
-
-`scripts/env.sh` (sourceado por todos los scripts principales) deriva automáticamente:
-
-- `TF_VAR_aws_region = us-east-1` (configurable vía `export TF_VAR_aws_region=...`)
-- `AWS_DEFAULT_REGION = $TF_VAR_aws_region` (para que los `aws` CLI commands de los scripts usen la misma región que Terraform)
-- `TF_VAR_stack_name = $STACK_NAME`
-- `TF_STATE_BUCKET = ${STACK_NAME}-state-bucket`
-- `TF_LOCK_TABLE = ${STACK_NAME}-lock-table`
-- `TF_FRONTEND_BUCKET_NAME = ${STACK_NAME}-frontend-bucket`
-- `TF_VAR_bucket_name = $TF_FRONTEND_BUCKET_NAME`
-
-### 6.2 Bootstrap (solo la primera vez)
-
-```bash
-bash scripts/bootstrap.sh
-```
-
-### 6.3 Apply
-
-```bash
-bash scripts/deploy.sh
-```
-
-`deploy.sh` orquesta:
-
-1. `install-lambdas.sh` — `npm ci` en cada Lambda Node y `build-engine.sh` para el engine Python (bundle manylinux con TFLite + numpy).
-2. `terraform-init.sh` — `terraform init` contra el backend S3 remoto.
-3. `terraform-apply.sh` — `terraform apply -auto-approve` del stack principal.
-4. `build-frontend.sh` — compila el SPA con los outputs reales y sincroniza a S3.
-5. Imprime el `website_endpoint` final.
-
----
-
-## 7. Verificación post-deploy
-
-Recursos esperados en la cuenta AWS (prefijados con `${STACK_NAME}`):
-
-- **Red**: VPC `10.0.0.0/16` con 4 subnets, 2 NAT Gateways, 1 IGW, 4 route tables, 2 security groups, 2 VPC endpoints (DynamoDB Gateway + SQS Interface).
-- **Lambdas**: 14 funciones — `auth-callback`, `fintech-{get, post-confirmation, update}`, `product-{get, create, update, delete}`, `simulations-{handler, results, engine}`, `recommendations-get`, `portfolio-{get, updater}`.
-- **DynamoDB**: 5 tablas — `simulations` (con GSI `task-id-sub-index` para lookup por `task_id`), `fintech`, `product`, `user`, `portfolio` (con GSI `gsi1` para listar CUITs por fintech y sparse GSI `record-type-pk-index` para iterar items INFO en el cron).
-- **SQS**: 2 colas — `simulations-queue` (principal) y `simulations-queue-dlq` (dead letter).
-- **API Gateway**: 1 HTTP API con stage `$default`, 1 JWT authorizer, 10 rutas, throttling configurado.
-- **Cognito**: 1 User Pool, 1 hosted UI domain, 1 App Client.
-- **Secrets Manager**: 1 secret con el client secret de Cognito.
-- **CloudWatch**: 14 log groups con `retention_in_days = 7`, 1 EventBridge rule (cron mensual) + target, y 5 metric alarms (1 sobre la profundidad del DLQ + 4 sobre `Errors` de las Lambdas async/event-driven críticas).
-- **S3**: 1 bucket de frontend con SSE AES256, website hosting y bucket policy pública para read.
-
-Smoke tests:
-
-```bash
-curl -I "$(terraform -chdir=terraform output -raw website_endpoint)"
-curl -i "$(terraform -chdir=terraform output -raw api_endpoint)/callback"
-```
-
----
-
-## 8. Uso de la aplicación
-
-### 8.1 Registro
-
-1. Abrir la URL del `website_endpoint` y seleccionar **Crear cuenta**.
-2. Completar email y contraseña (mínimo 8 caracteres, con mayúscula, minúscula y número). El frontend redirige a la Hosted UI de Cognito.
-3. Confirmar el email con el código recibido.
-4. El trigger `fintech-post-confirmation` crea automáticamente la fila inicial en la tabla `fintech` con los parámetros generales por defecto.
-5. Cognito redirige al callback del API Gateway, que canjea el code por tokens consultando el client secret en Secrets Manager.
-
-### 8.2 Configuración de parámetros generales
-
-En **Parámetros**, definir el filtro previo al scoring. Los valores por defecto al momento del registro son:
-
-| Parámetro | Default |
-|---|---|
-| `max_situacion_crediticia` | 2 |
-| `max_entidades_con_deuda` | 3 |
-| `max_deuda_total_ars` | 350000 |
-| `min_meses_situacion_1` | 6 |
-| `max_dias_atraso` | 30 |
-| `permite_proceso_judicial` | false |
-
-Cada cambio se persiste vía `PUT /fintech` en la tabla `fintech`. Los clientes que no superan estos umbrales son rechazados antes de ejecutar inferencia.
-
-### 8.3 Alta de productos
-
-En **Productos → Nuevo producto**, completar:
-
-- `name`, `amount`, `installments`, `interest`, `term`.
-- `min_score` y `max_score`: rango de score elegible (escala 0–10).
-- `priority`: peso comercial 1–10, usado para ordenar las recomendaciones.
-
-Se recomienda definir al menos dos productos con rangos solapados y prioridades distintas para validar el ranking.
-
-### 8.4 Ejecución de una simulación
-
-> **Importante**: antes de ejecutar la primera simulación es necesario haber dado de alta al menos un producto (sección 8.3). Sin productos, la consulta de recomendaciones (sección 8.5) devuelve listas vacías porque no hay nada que rankear contra el score del cliente.
-
-En **Simulaciones → Nueva simulación**, ingresar un CUIT.
-
-Flujo:
-
-1. `POST /simulations` (Lambda `simulations-handler`): registra el CUIT, crea la fila en la tabla `simulations` con `status = PROCESSING` y un `task_id`, traquea el CUIT en `portfolio`, y encola el mensaje en SQS. Las 4 escrituras a DynamoDB se ejecutan en una sola **transacción** (`TransactWriteItems`) → atomicidad garantizada. Responde `202 Accepted`.
-2. `simulations-engine` (Python, event source SQS): consulta el BCRA, deriva las features, aplica el filtro de la fintech y ejecuta inferencia TFLite.
-3. El estado final se persiste en la misma fila de DynamoDB.
-
-Estados posibles:
-
-| Status | Significado |
-|---|---|
-| `PROCESSING` | En la cola o en procesamiento |
-| `COMPLETED` | Score calculado (`score ∈ [0,1]`) |
-| `REJECTED` | No superó el filtro de parámetros generales (ver `rejection_reasons`) |
-| `FAILED` | Error definitivo tras reintentos (ver `error_message`) |
-
-Si una invocación falla 3 veces consecutivas, SQS mueve el mensaje al `simulations-queue-dlq` para inspección manual (retention 14 días).
-
-### 8.5 Consulta de recomendaciones
-
-Al abrir el detalle de una simulación `COMPLETED`, el frontend invoca `GET /recommendations?task_id=<id>`. La Lambda `recommendations-get`:
-
-1. Lee la simulación y los productos de la fintech autenticada.
-2. Escala el score a `[0, 10]`.
-3. Devuelve dos listas:
-   - `eligible`: productos cuyo rango `[min_score, max_score]` contiene al score, ordenados por `priority DESC`.
-   - `not_eligible`: el resto, con un `reason` que indica si el score quedó por debajo o por encima del rango.
-
-### 8.6 Portfolio (monitoreo continuo)
-
-En **Cartera** se listan los CUITs que esta fintech ya consultó alguna vez. Para cada uno se muestra el `current_status`, el `previous_status` y la tendencia (`up`, `down`, `stable`).
-
-Backend:
-
-- `GET /portfolio` (Lambda `portfolio-get`): lista los CUITs trackeados usando el GSI `gsi1` (acceso por `FINTECH#<sub>` → todos sus CUITs sin scan). Soporta búsqueda por CUIT exacto y paginación.
-- **Cron mensual** (EventBridge `cron(0 10 1 * ? *)` → Lambda `portfolio-updater`, timeout 300s): el día 1 de cada mes a las 10:00 UTC, escanea todos los CUITs trackeados en la tabla `portfolio` y actualiza sus estados consultando la **API pública del BCRA** (`GET /centraldedeudores/v1.0/Deudas/{cuit}`). Para cada CUIT toma el período más reciente y deriva la situación como el máximo `situacion` entre todas las entidades informantes (idéntico criterio que el `simulations-engine`). Si el BCRA responde 404 el CUIT se marca como procesado para el período actual (sin actualizar la situación). Cualquier otro error HTTP/red propaga la excepción y EventBridge lo captura en el DLQ.
-- **`POST /portfolio/refresh`** (misma Lambda `portfolio-updater`, invocación sincrónica vía API Gateway, auth requerida): permite disparar la actualización manualmente desde el frontend sin esperar al cron. El botón "Actualizar cartera" de la página de Cartera llama a este endpoint y muestra feedback de progreso al usuario.
-- Si la invocación del cron falla, EventBridge reintenta (hasta 1 hora) y luego deposita el evento en el `main_dlq`. Si el handler Lambda falla por excepción, Lambda reintenta 2 veces y luego también deposita en el `main_dlq`.
-
----
-
-## 9. Teardown
-
-**Vía GitHub Actions**: **Actions → Terraform Destroy → Run workflow**, tipear `destroy` en el campo de confirmación. Vacía el bucket del frontend y ejecuta `terraform destroy`. El state y la tabla de lock permanecen.
-
-**Vía local**:
-
-```bash
-bash scripts/destroy.sh
-```
-
-Para eliminar también el bootstrap (state bucket + lock table):
-
-```bash
-bash scripts/destroy-bootstrap.sh
-```
-
----
-
-## 10. Troubleshooting
-
-| Síntoma | Causa probable | Acción |
-|---|---|---|
-| `ExpiredToken` / `InvalidClientTokenId` | Credenciales del lab vencidas | Regenerar en AWS Academy y actualizar Secrets/exports |
-| `terraform apply` colgado | Lock activo de otra ejecución | Esperar; si quedó huérfano, borrar el ítem en la lock table |
-| Simulación en `PROCESSING` indefinido | Error en `simulations-engine` | Revisar CloudWatch Logs del Lambda (`/aws/lambda/${STACK_NAME}-simulations-engine`) y la DLQ |
-| Simulación `FAILED` con HTTP 404 | CUIT sin historial BCRA | Esperado; probar con otro CUIT |
-| Frontend devuelve 404 en rutas internas | Falta sync del bundle a S3 | Reejecutar el job `frontend` o `scripts/deploy.sh` |
-| CORS bloquea el llamado al API | Origen no permitido | El bucket S3 y `localhost:5173` están permitidos por default. Otros orígenes: agregar via `TF_VAR_cors_additional_origins='["..."]'` y reapply |
-| Cron de portfolio no corre | Evento sin entrega | Revisar el `main_dlq` para ver si el evento llegó ahí (retry policy del EventBridge target) |
-
----
-
-## Anexo — Comandos rápidos
-
-```bash
-export STACK_NAME=tincho-presti                # tu prefijo único
-
-# Despliegue inicial local
-bash scripts/bootstrap.sh
-bash scripts/deploy.sh
-
-# Reaplicar
-bash scripts/deploy.sh
-
-# Refresh solo del frontend
-bash scripts/build-frontend.sh \
-  "$(terraform -chdir=terraform output -raw auth_cognito_domain)" \
-  "$(terraform -chdir=terraform output -raw auth_client_id)" \
-  "$(terraform -chdir=terraform output -raw api_endpoint)" \
-  "./frontend" \
-  "$(terraform -chdir=terraform output -raw bucket_name)"
-
-# Tail de logs de una Lambda específica
-aws logs tail "/aws/lambda/${STACK_NAME}-simulations-engine" --follow --since 5m
-
-# Inspeccionar mensajes en la DLQ
-aws sqs receive-message \
-  --queue-url $(aws sqs get-queue-url --queue-name ${STACK_NAME}-simulations-queue-dlq --query QueueUrl --output text) \
-  --max-number-of-messages 5 \
-  --visibility-timeout 0
-
-# Teardown
-bash scripts/destroy.sh
-```
-
----
-
-## Documentación adicional
-
-- [`engine/README.md`](engine/README.md) — pipeline de preprocessing y entrenamiento del modelo crediticio.
-- [`terraform/README.md`](terraform/README.md) — composición del stack principal, archivos y variables.
-- [`terraform/modules/network/README.md`](terraform/modules/network/README.md) — variables, outputs y ejemplos de uso del módulo `network`.
-- [`terraform-bootstrap/README.md`](terraform-bootstrap/README.md) — bootstrap del state remoto.
+<p align="right">(<a href="#presti---cloud-computing">Volver</a>)</p>
