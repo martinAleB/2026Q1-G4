@@ -57,7 +57,7 @@ cloud-presti/
 1. **Fuente de datos**: archivos del BCRA (`deudores.txt` + `24DSF.txt`).
 2. **Features**: ~23 variables por CUIT — situación actual, días de atraso, ratios de cobertura, tendencia a 24 meses, etc.
 3. **Modelo**: MLP (TensorFlow/Keras) → `Input → Dense(16, relu) → Dense(1, sigmoid)`.
-4. **Score**: valor continuo entre `0.0` (irrecuperable) y `1.0` (excelente).
+4. **Score**: valor continuo entre `0.0` (irrecuperable) y `10.0` (excelente).
 5. **Recomendación**: el dashboard muestra productos financieros elegibles según el score de cada cliente.
 
 Ver [`engine/README.md`](engine/README.md) para documentación detallada del pipeline de entrenamiento.
