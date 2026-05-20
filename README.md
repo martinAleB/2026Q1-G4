@@ -218,7 +218,7 @@ El diseño de la infraestructura en Terraform utiliza avanzadas metodologías de
 
 ## Pipeline de GitHub Actions (Terraform)
 
-El proyecto cuenta con un esquema de Integración Continua (CI) robusto que automatiza las tareas de aseguramiento de calidad del código de infraestructura en cada cambio.
+El proyecto cuenta con un esquema de Integración Continua (CI) que automatiza las tareas de aseguramiento de calidad del código de infraestructura en cada cambio.
 
 ### 1. Validación de Infraestructura en CI (`ci.yml`)
 Cada vez que se sube código o se genera un Pull Request, se ejecuta el workflow de validación. Este workflow realiza pruebas de sintaxis, formato y coherencia arquitectónica **sin inicializar recursos en AWS (`-backend=false`)** para actuar de forma sumamente rápida:
@@ -293,6 +293,7 @@ Algunas aclaraciones finales con respecto a las funcionalidades de este trabajo:
 - <b>API BCRA</b>: La funcionalidad de la API provista por el BCRA no es consistente, algunas veces las request logran llegar a destino y se obtiene una respuesta, pero otras no. Se intentó de distintas formas y con distintos headers, y se dejó funcionando la configuración que mejores resultados arrojó.
 - <b>Funcionalidad de Simulación</b>: Actualmente, las simulaciones arrojan la predición del score obtenida del modelo, y en base a los productos del usuario se realiza el cálculo en el frontend. La idea es para el TP4 que la simulación devuelva directamente los productos recomendados.
 - <b>Funcionalidad como API</b>: Si bien se pretende que el sistema provea una API que las Fintech puedan integrar para aplicar las funcionalidades, esta feature se implementará en el TP4.
+- <b>Control de Cartera</b>: Se agregó la opción de ejecutar la lambda de control desde el dashboard a modo demostrativo. Está configurado para correr en el primer día del mes (los datos se actualizan en los últimos del mes anterior).
 
 <p align="right">(<a href="#presti---cloud-computing">Volver</a>)</p>
 
