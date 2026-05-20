@@ -25,6 +25,7 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
       AWS_DEFAULT_REGION: us-east-1
+      STACK_NAME: ${{ vars.STACK_NAME }}
       TF_VAR_stack_name: ${{ vars.STACK_NAME }}
       TF_VAR_bucket_name: ${{ vars.STACK_NAME }}-frontend-bucket
       TF_STATE_BUCKET: ${{ vars.STACK_NAME }}-state-bucket
