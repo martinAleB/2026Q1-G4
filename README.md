@@ -1,6 +1,6 @@
 # Presti - Cloud Computing
 
-El presente trabajo, realizado para la materia *Cloud Computing*, consiste en el desarrollo una motor de decisiones para Fintechs que busca mejorar el otorgamiento de productos crediticios (préstamos) a sus clientes minoritas. Para esto, se desarrolló una plataforma cloud que contiene un motor de machine learning que consulta los datos históricos de la *Central de Deudores del BCRA* y predice la situación creditica por los próximos meses.
+El presente trabajo, realizado para la materia *Cloud Computing*, consiste en el desarrollo una motor de decisiones para Fintechs que busca mejorar el otorgamiento de productos crediticios (préstamos) a sus clientes minoristas. Para esto, se desarrolló una plataforma cloud que contiene un motor de machine learning que consulta los datos históricos de la *Central de Deudores del BCRA* y predice la situación creditica por los próximos meses.
 
 La plataforma cuenta principalmente con las siguientes funcionalidades representadas en su panel de control:
 
@@ -25,6 +25,12 @@ La plataforma cuenta principalmente con las siguientes funcionalidades represent
     <li><a href="#integrantes">Integrantes</a></li>
   </ol>
 </details>
+
+<p align="right">(<a href="#presti---cloud-computing">Volver</a>)</p>
+
+## Diagrama de Arquitectura
+
+![Architecture Diagram](./docs/architecture.png)
 
 <p align="right">(<a href="#presti---cloud-computing">Volver</a>)</p>
 
