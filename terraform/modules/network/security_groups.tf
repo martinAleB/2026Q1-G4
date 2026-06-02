@@ -35,8 +35,9 @@ locals {
 resource "aws_security_group" "sg" {
   for_each = { for sg in var.security_groups_config : sg.name => sg }
 
-  name   = "${var.vpc_config.name}-${each.value.name}"
-  vpc_id = aws_vpc.vpc.id
+  name        = "${var.vpc_config.name}-${each.value.name}"
+  description = "Security group ${each.value.name} for VPC ${var.vpc_config.name}"
+  vpc_id      = aws_vpc.vpc.id
 
   tags = {
     Name = "${var.vpc_config.name}-${each.value.name}"
