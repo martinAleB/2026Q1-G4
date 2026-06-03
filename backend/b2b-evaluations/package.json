@@ -1,0 +1,13 @@
+{
+  "name": "b2b-evaluations",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/client-sqs": "^3.600.0",
+    "@aws-sdk/lib-dynamodb": "^3.600.0"
+  }
+}
