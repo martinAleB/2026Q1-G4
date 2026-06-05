@@ -29,3 +29,8 @@ output "website_endpoint" {
   description = "HTTP URL of the static website served by the S3 bucket (lab cannot serve HTTPS without ACM + custom domain)"
   value       = "http://${aws_s3_bucket_website_configuration.frontend.website_endpoint}"
 }
+
+output "b2b_api_endpoint" {
+  description = "Base URL de la API B2B (rutas /v1/*)"
+  value       = "${aws_apigatewayv2_api.main.api_endpoint}/v1"
+}

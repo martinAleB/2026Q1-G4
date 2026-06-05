@@ -33,6 +33,16 @@ find "$BACKEND_DIR" -name node_modules -prune -o -name package.json -print | \
   xargs -n 1 -P 4 -I {} bash -c 'process_lambda "$@"' _ {}
 
 echo ""
+echo "==> Copiando módulo compartido (shared/enqueue.js)"
+for lambda_dir in \
+  "${BACKEND_DIR}/simulations/handler" \
+  "${BACKEND_DIR}/b2b-evaluations"; do
+  mkdir -p "${lambda_dir}/shared"
+  cp "${BACKEND_DIR}/shared/enqueue.js" "${lambda_dir}/shared/enqueue.js"
+  echo "    → ${lambda_dir#${BACKEND_DIR}/}/shared/enqueue.js"
+done
+
+echo ""
 echo "==> Building simulations engine"
 engine_start=$(date +%s)
 bash "${SCRIPT_DIR}/build-engine.sh"

@@ -112,6 +112,17 @@ createServer(async (req, res) => {
   }
 
 
+  // GET /integrations/credentials
+  if (req.method === 'GET' && path === '/integrations/credentials') {
+    send(res, 200, {
+      client_id: 'mock-client-id-1234567890',
+      client_secret: 'mock-client-secret-abcdef1234567890',
+      client_name: 'Mock Fintech App',
+      created_at: new Date(Date.now() - 86_400_000).toISOString(),
+    })
+    return
+  }
+
   // POST /portfolio/refresh (mock del portfolio-updater)
   if (req.method === 'POST' && path === '/portfolio/refresh') {
     // Simular el tiempo de procesamiento del BCRA (~2s en mock)

@@ -4,6 +4,7 @@ const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, PutCommand } = require('@aws-sdk/lib-dynamodb');
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+
 const TABLE = process.env.DYNAMODB_FINTECH_TABLE;
 
 const DEFAULT_FINTECH_ROW = {

@@ -14,6 +14,7 @@ const ProductsPage = lazy(() => import('@/pages/dashboard/ProductsPage'))
 const ParametersPage = lazy(() => import('@/pages/dashboard/ParametersPage'))
 const PortfolioPage = lazy(() => import('@/pages/dashboard/PortfolioPage'))
 const SimulationsPage = lazy(() => import('@/pages/dashboard/SimulationsPage'))
+const IntegrationsPage = lazy(() => import('@/pages/dashboard/IntegrationsPage'))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 
 function PageLoader() {
@@ -90,6 +91,10 @@ export const router = createHashRouter([
       {
         path: 'simulations',
         element: withSuspense(SimulationsPage),
+      },
+      {
+        path: 'integrations',
+        element: withSuspense(IntegrationsPage),
       },
     ],
   },

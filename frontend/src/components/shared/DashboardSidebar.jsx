@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   FolderKanban,
+  KeyRound,
   LogOut,
   Package,
   Search,
@@ -27,6 +28,7 @@ const navigation = [
   { name: 'Simulador', href: '/dashboard/simulations', icon: Search },
   { name: 'Parametros', href: '/dashboard/parameters', icon: Sliders },
   { name: 'Cartera', href: '/dashboard/portfolio', icon: FolderKanban },
+  { name: 'Integración', href: '/dashboard/integrations', icon: KeyRound },
 ]
 
 function getInitialCollapsedState() {

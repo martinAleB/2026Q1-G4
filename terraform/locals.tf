@@ -22,6 +22,9 @@ locals {
     "recommendations-get"       = "${path.root}/../backend/recommendations-get"
     "portfolio-get"             = "${path.root}/../backend/portfolio-get"
     "portfolio-updater"         = "${path.root}/../backend/portfolio-updater"
+    "b2b-authorizer"            = "${path.root}/../backend/b2b-authorizer"
+    "b2b-evaluations"           = "${path.root}/../backend/b2b-evaluations"
+    "api-credentials"           = "${path.root}/../backend/api-credentials"
   }
 
   lambda_configs = {
@@ -163,6 +166,39 @@ locals {
         DYNAMODB_PORTFOLIO_TABLE = module.dynamodb_portfolio.dynamodb_table_id
       }
     }
+    "b2b-authorizer" = {
+      handler     = "index.handler"
+      runtime     = var.lambda_node_runtime
+      timeout     = 10
+      memory_size = 256
+      in_vpc      = true
+      env_vars = {
+        DYNAMODB_API_CLIENTS_TABLE = module.dynamodb_api_clients.dynamodb_table_id
+      }
+    }
+    "b2b-evaluations" = {
+      handler     = "index.handler"
+      runtime     = var.lambda_node_runtime
+      timeout     = 30
+      memory_size = 256
+      in_vpc      = true
+      env_vars = {
+        SQS_QUEUE_URL            = aws_sqs_queue.main.url
+        DYNAMODB_TABLE_NAME      = module.dynamodb_simulations.dynamodb_table_id
+        DYNAMODB_USER_TABLE      = module.dynamodb_user.dynamodb_table_id
+        DYNAMODB_PORTFOLIO_TABLE = module.dynamodb_portfolio.dynamodb_table_id
+      }
+    }
+    "api-credentials" = {
+      handler     = "index.handler"
+      runtime     = var.lambda_node_runtime
+      timeout     = 30
+      memory_size = 256
+      in_vpc      = true
+      env_vars = {
+        DYNAMODB_API_CLIENTS_TABLE = module.dynamodb_api_clients.dynamodb_table_id
+      }
+    }
   }
 
   lambda_permissions = {
@@ -206,6 +242,15 @@ locals {
       { principal = "events.amazonaws.com", source_arn = aws_cloudwatch_event_rule.portfolio_updater.arn },
       { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" },
     ]
+    "b2b-authorizer" = [
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" }
+    ]
+    "b2b-evaluations" = [
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" }
+    ]
+    "api-credentials" = [
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" }
+    ]
   }
 
   lambda_async_dlq_arns = {
@@ -226,20 +271,26 @@ locals {
     "recommendations-get" = aws_lambda_function.lambdas["recommendations-get"].invoke_arn
     "portfolio-get"       = aws_lambda_function.lambdas["portfolio-get"].invoke_arn
     "portfolio-updater"   = aws_lambda_function.lambdas["portfolio-updater"].invoke_arn
+    "b2b-evaluations"     = aws_lambda_function.lambdas["b2b-evaluations"].invoke_arn
+    "api-credentials"     = aws_lambda_function.lambdas["api-credentials"].invoke_arn
   }
 
   api_routes = {
-    "callback"            = { route_key = "GET /callback", integration = "auth-callback", auth = false }
-    "fintech-get"         = { route_key = "GET /fintech", integration = "fintech-get", auth = true }
-    "fintech-put"         = { route_key = "PUT /fintech", integration = "fintech-update", auth = true }
-    "product-get"         = { route_key = "GET /product", integration = "product-get", auth = true }
-    "product-post"        = { route_key = "POST /product", integration = "product-create", auth = true }
-    "product-put"         = { route_key = "PUT /product/{id}", integration = "product-update", auth = true }
-    "product-delete"      = { route_key = "DELETE /product/{id}", integration = "product-delete", auth = true }
-    "simulations-post"    = { route_key = "POST /simulations", integration = "simulations-handler", auth = true }
-    "simulations-get"     = { route_key = "GET /simulations", integration = "simulations-results", auth = true }
-    "recommendations-get" = { route_key = "GET /recommendations", integration = "recommendations-get", auth = true }
-    "portfolio-get"       = { route_key = "GET /portfolio", integration = "portfolio-get", auth = true }
-    "portfolio-refresh"   = { route_key = "POST /portfolio/refresh", integration = "portfolio-updater", auth = true }
+    "callback"            = { route_key = "GET /callback", integration = "auth-callback", auth_type = "NONE" }
+    "fintech-get"         = { route_key = "GET /fintech", integration = "fintech-get", auth_type = "JWT" }
+    "fintech-put"         = { route_key = "PUT /fintech", integration = "fintech-update", auth_type = "JWT" }
+    "product-get"         = { route_key = "GET /product", integration = "product-get", auth_type = "JWT" }
+    "product-post"        = { route_key = "POST /product", integration = "product-create", auth_type = "JWT" }
+    "product-put"         = { route_key = "PUT /product/{id}", integration = "product-update", auth_type = "JWT" }
+    "product-delete"      = { route_key = "DELETE /product/{id}", integration = "product-delete", auth_type = "JWT" }
+    "simulations-post"    = { route_key = "POST /simulations", integration = "simulations-handler", auth_type = "JWT" }
+    "simulations-get"     = { route_key = "GET /simulations", integration = "simulations-results", auth_type = "JWT" }
+    "recommendations-get" = { route_key = "GET /recommendations", integration = "recommendations-get", auth_type = "JWT" }
+    "portfolio-get"       = { route_key = "GET /portfolio", integration = "portfolio-get", auth_type = "JWT" }
+    "portfolio-refresh"   = { route_key = "POST /portfolio/refresh", integration = "portfolio-updater", auth_type = "JWT" }
+    "v1-evaluations-post" = { route_key = "POST /v1/evaluations", integration = "b2b-evaluations", auth_type = "CUSTOM" }
+    "v1-evaluations-get"  = { route_key = "GET /v1/evaluations", integration = "b2b-evaluations", auth_type = "CUSTOM" }
+    "api-credentials-get"  = { route_key = "GET /integrations/credentials",  integration = "api-credentials", auth_type = "JWT" }
+    "api-credentials-post" = { route_key = "POST /integrations/credentials", integration = "api-credentials", auth_type = "JWT" }
   }
 }

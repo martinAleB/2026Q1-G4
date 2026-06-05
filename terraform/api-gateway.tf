@@ -53,6 +53,10 @@ resource "aws_apigatewayv2_route" "routes" {
   api_id             = aws_apigatewayv2_api.main.id
   route_key          = each.value.route_key
   target             = "integrations/${aws_apigatewayv2_integration.lambdas[each.value.integration].id}"
-  authorization_type = each.value.auth ? "JWT" : "NONE"
-  authorizer_id      = each.value.auth ? aws_apigatewayv2_authorizer.cognito_jwt.id : null
+  authorization_type = each.value.auth_type
+  authorizer_id = (
+    each.value.auth_type == "JWT" ? aws_apigatewayv2_authorizer.cognito_jwt.id :
+    each.value.auth_type == "CUSTOM" ? aws_apigatewayv2_authorizer.b2b_lambda.id :
+    null
+  )
 }

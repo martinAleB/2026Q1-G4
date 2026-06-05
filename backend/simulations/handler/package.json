@@ -4,6 +4,7 @@
   "description": "API Gateway handler for simulations (Producer)",
   "main": "index.js",
   "dependencies": {
+    "@aws-sdk/lib-dynamodb": "^3.600.0",
     "uuid": "^9.0.1"
   },
   "scripts": {
