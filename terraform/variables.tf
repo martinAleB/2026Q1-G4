@@ -64,6 +64,12 @@ variable "private_subnet_cidrs" {
   default     = ["10.0.2.0/24", "10.0.5.0/24"]
 }
 
+variable "db_subnet_cidrs" {
+  description = "CIDR blocks of the private subnets dedicated to RDS, one per AZ"
+  type        = list(string)
+  default     = ["10.0.3.0/24", "10.0.6.0/24"]
+}
+
 
 variable "lambda_node_runtime" {
   description = "Node.js runtime applied to all Node Lambdas (auth-callback, fintech-*, product-*, recommendations-get, simulations handler/results)"
@@ -101,4 +107,10 @@ variable "lambda_log_retention_days" {
   description = "CloudWatch retention applied to every Lambda log group. Without this, AWS keeps logs forever and the lab budget bleeds slowly. 7 days is enough for daily debugging in a POC."
   type        = number
   default     = 7
+}
+
+variable "rds_instance_class" {
+  description = "RDS instance class for the portfolio PostgreSQL database"
+  type        = string
+  default     = "db.t3.micro"
 }

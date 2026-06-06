@@ -1,5 +1,6 @@
 import json
 import os
+import ssl
 import time
 import urllib.request
 import urllib.error
@@ -8,6 +9,7 @@ from pathlib import Path
 import datetime
 import boto3
 import numpy as np
+import pg8000.native
 
 # Importar LiteRT (antes tflite-runtime) para Python 3.12+
 try:
@@ -33,6 +35,11 @@ DYNAMODB_FINTECH_TABLE = os.environ.get('DYNAMODB_FINTECH_TABLE')
 SQS_QUEUE_URL          = os.environ.get('SQS_QUEUE_URL')
 MODEL_ARTIFACTS_BUCKET = os.environ.get('MODEL_ARTIFACTS_BUCKET')
 MODEL_ARTIFACTS_PREFIX = os.environ.get('MODEL_ARTIFACTS_PREFIX', 'v1/')
+DB_HOST                = os.environ.get('DB_HOST')
+DB_PORT                = int(os.environ.get('DB_PORT', '5432'))
+DB_NAME                = os.environ.get('DB_NAME')
+DB_USER                = os.environ.get('DB_USER')
+DB_PASSWORD            = os.environ.get('DB_PASSWORD')
 
 
 def _required_env(name: str) -> str:
@@ -383,6 +390,50 @@ def predecir_score(features_dict: dict) -> float:
     
     return float(preds[0][0])
 
+def persist_features_to_rds(cuit: str, features: dict, score: float):
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
+    conn = pg8000.native.Connection(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        ssl_context=ssl_ctx,
+    )
+    try:
+        conn.run(
+            """
+            INSERT INTO portfolio_cuits (
+                cuit, situacion, cant_entidades, deuda_total_ars,
+                meses_en_sit1, dias_atraso_max, proceso_judicial, score, features_updated_at
+            ) VALUES (
+                :cuit, :sit, :cant, :deuda, :meses, :dias, :proceso, :score, NOW()
+            )
+            ON CONFLICT (cuit) DO UPDATE SET
+                situacion            = EXCLUDED.situacion,
+                cant_entidades       = EXCLUDED.cant_entidades,
+                deuda_total_ars      = EXCLUDED.deuda_total_ars,
+                meses_en_sit1        = EXCLUDED.meses_en_sit1,
+                dias_atraso_max      = EXCLUDED.dias_atraso_max,
+                proceso_judicial     = EXCLUDED.proceso_judicial,
+                score                = EXCLUDED.score,
+                features_updated_at  = EXCLUDED.features_updated_at
+            """,
+            cuit=cuit,
+            sit=int(features.get('situacion', 0)),
+            cant=int(features.get('cant_entidades', 0)),
+            deuda=float(features.get('prestamos_total', 0)) * 1000,
+            meses=int(features.get('meses_en_sit1', 0)),
+            dias=int(features.get('dias_atraso_max', 0)),
+            proceso=bool(int(features.get('proceso_judicial', 0))),
+            score=score,
+        )
+    finally:
+        conn.close()
+
+
 def lambda_handler(event, context):
     for record in event.get('Records', []):
         task_id = None
@@ -418,6 +469,8 @@ def lambda_handler(event, context):
 
             score = predecir_score(features)
             print(f"Score calculado: {score}")
+
+            persist_features_to_rds(cuit, features, score)
 
             update_simulation_status(sub, cuit, task_id, "COMPLETED", score=score)
 

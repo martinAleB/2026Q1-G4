@@ -22,6 +22,7 @@ locals {
     "recommendations-get"       = "${path.root}/../backend/recommendations-get"
     "portfolio-get"             = "${path.root}/../backend/portfolio-get"
     "portfolio-updater"         = "${path.root}/../backend/portfolio-updater"
+    "db-migrations"             = "${path.root}/../backend/db"
   }
 
   lambda_configs = {
@@ -102,10 +103,14 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        SQS_QUEUE_URL            = aws_sqs_queue.main.url
-        DYNAMODB_TABLE_NAME      = module.dynamodb_simulations.dynamodb_table_id
-        DYNAMODB_USER_TABLE      = module.dynamodb_user.dynamodb_table_id
-        DYNAMODB_PORTFOLIO_TABLE = module.dynamodb_portfolio.dynamodb_table_id
+        SQS_QUEUE_URL       = aws_sqs_queue.main.url
+        DYNAMODB_TABLE_NAME = module.dynamodb_simulations.dynamodb_table_id
+        DYNAMODB_USER_TABLE = module.dynamodb_user.dynamodb_table_id
+        DB_HOST             = aws_db_instance.portfolio.address
+        DB_PORT             = tostring(aws_db_instance.portfolio.port)
+        DB_NAME             = "portfolio"
+        DB_USER             = "db_admin"
+        DB_PASSWORD         = random_password.db_password.result
       }
     }
     "simulations-results" = {
@@ -130,6 +135,11 @@ locals {
         SQS_QUEUE_URL          = aws_sqs_queue.main.url
         MODEL_ARTIFACTS_BUCKET = aws_s3_bucket.model_artifacts.id
         MODEL_ARTIFACTS_PREFIX = "v1/"
+        DB_HOST                = aws_db_instance.portfolio.address
+        DB_PORT                = tostring(aws_db_instance.portfolio.port)
+        DB_NAME                = "portfolio"
+        DB_USER                = "db_admin"
+        DB_PASSWORD            = random_password.db_password.result
       }
     }
     "recommendations-get" = {
@@ -150,7 +160,11 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DYNAMODB_PORTFOLIO_TABLE = module.dynamodb_portfolio.dynamodb_table_id
+        DB_HOST     = aws_db_instance.portfolio.address
+        DB_PORT     = tostring(aws_db_instance.portfolio.port)
+        DB_NAME     = "portfolio"
+        DB_USER     = "db_admin"
+        DB_PASSWORD = random_password.db_password.result
       }
     }
     "portfolio-updater" = {
@@ -160,7 +174,24 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DYNAMODB_PORTFOLIO_TABLE = module.dynamodb_portfolio.dynamodb_table_id
+        DB_HOST     = aws_db_instance.portfolio.address
+        DB_PORT     = tostring(aws_db_instance.portfolio.port)
+        DB_NAME     = "portfolio"
+        DB_USER     = "db_admin"
+        DB_PASSWORD = random_password.db_password.result
+      }
+    }
+    "db-migrations" = {
+      handler     = "index.handler"
+      runtime     = var.lambda_node_runtime
+      timeout     = 300
+      memory_size = 256
+      in_vpc      = true
+      env_vars = {
+        DB_HOST    = aws_db_instance.portfolio.address
+        DB_PORT    = tostring(aws_db_instance.portfolio.port)
+        DB_NAME    = aws_db_instance.portfolio.db_name
+        SECRET_ARN = aws_secretsmanager_secret.db_credentials.arn
       }
     }
   }

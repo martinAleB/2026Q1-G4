@@ -29,3 +29,13 @@ output "website_endpoint" {
   description = "HTTP URL of the static website served by the S3 bucket (lab cannot serve HTTPS without ACM + custom domain)"
   value       = "http://${aws_s3_bucket_website_configuration.frontend.website_endpoint}"
 }
+
+output "rds_endpoint" {
+  description = "RDS PostgreSQL endpoint used by Lambdas via DB_HOST environment variable"
+  value       = aws_db_instance.portfolio.address
+}
+
+output "rds_secret_arn" {
+  description = "ARN of the Secrets Manager secret containing RDS credentials"
+  value       = aws_secretsmanager_secret.db_credentials.arn
+}

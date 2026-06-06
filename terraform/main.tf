@@ -30,6 +30,16 @@ module "vpc" {
       cidr_block        = var.private_subnet_cidrs[1]
       availability_zone = "${var.aws_region}b"
     },
+    {
+      name              = "private-az-a-2"
+      cidr_block        = var.db_subnet_cidrs[0]
+      availability_zone = "${var.aws_region}a"
+    },
+    {
+      name              = "private-az-b-2"
+      cidr_block        = var.db_subnet_cidrs[1]
+      availability_zone = "${var.aws_region}b"
+    },
   ]
 
   route_tables_config = [
@@ -65,6 +75,16 @@ module "vpc" {
         target     = "nat"
       }]
     },
+    {
+      name    = "private-rt-az-a-2"
+      subnets = ["private-az-a-2"]
+      routes  = []
+    },
+    {
+      name    = "private-rt-az-b-2"
+      subnets = ["private-az-b-2"]
+      routes  = []
+    },
   ]
 
   security_groups_config = [
@@ -93,6 +113,13 @@ module "vpc" {
           cidr_blocks = [var.vpc_cidr_block]
           description = "DNS resolution against the VPC resolver"
         },
+        {
+          protocol           = "tcp"
+          from_port          = 5432
+          to_port            = 5432
+          security_group_ref = "rds-sg"
+          description        = "PostgreSQL to RDS"
+        },
       ]
     },
     {
@@ -104,6 +131,19 @@ module "vpc" {
           to_port            = 443
           security_group_ref = "lambda-sg"
           description        = "HTTPS from Lambdas to the SQS interface endpoint"
+        },
+      ]
+      outbound = []
+    },
+    {
+      name = "rds-sg"
+      inbound = [
+        {
+          protocol           = "tcp"
+          from_port          = 5432
+          to_port            = 5432
+          security_group_ref = "lambda-sg"
+          description        = "PostgreSQL from Lambdas"
         },
       ]
       outbound = []
@@ -222,40 +262,59 @@ module "dynamodb_user" {
   ]
 }
 
-module "dynamodb_portfolio" {
-  source  = "terraform-aws-modules/dynamodb-table/aws"
-  version = "4.4.0"
+resource "random_password" "db_password" {
+  length  = 24
+  special = false
+}
 
-  name         = "${var.stack_name}-portfolio"
-  hash_key     = "pk"
-  range_key    = "sk"
-  billing_mode = var.dynamodb_billing_mode
+resource "aws_secretsmanager_secret" "db_credentials" {
+  name                    = "${var.stack_name}-rds-credentials"
+  description             = "RDS PostgreSQL credentials for portfolio database"
+  recovery_window_in_days = 0
+}
 
-  server_side_encryption_enabled = true
-  point_in_time_recovery_enabled = true
+resource "aws_secretsmanager_secret_version" "db_credentials" {
+  secret_id = aws_secretsmanager_secret.db_credentials.id
+  secret_string = jsonencode({
+    username = "db_admin"
+    password = random_password.db_password.result
+    host     = aws_db_instance.portfolio.address
+    port     = aws_db_instance.portfolio.port
+    dbname   = "portfolio"
+  })
+}
 
-  attributes = [
-    { name = "pk", type = "S" },
-    { name = "sk", type = "S" },
-    { name = "gsi1_pk", type = "S" },
-    { name = "gsi1_sk", type = "S" },
-    { name = "record_type", type = "S" },
+resource "aws_db_subnet_group" "portfolio" {
+  name        = "${var.stack_name}-portfolio-subnet-group"
+  description = "Private DB subnets for portfolio RDS instance"
+  subnet_ids = [
+    module.vpc.subnet_ids[var.db_subnet_cidrs[0]],
+    module.vpc.subnet_ids[var.db_subnet_cidrs[1]],
   ]
 
-  global_secondary_indexes = [
-    {
-      name            = "gsi1"
-      hash_key        = "gsi1_pk"
-      range_key       = "gsi1_sk"
-      projection_type = "ALL"
-    },
-    {
-      name            = "record-type-pk-index"
-      hash_key        = "record_type"
-      range_key       = "pk"
-      projection_type = "ALL"
-    }
-  ]
+  tags = { Name = "${var.stack_name}-portfolio-subnet-group" }
+}
+
+resource "aws_db_instance" "portfolio" {
+  identifier            = "${var.stack_name}-portfolio"
+  engine                = "postgres"
+  engine_version        = "15.7"
+  instance_class        = var.rds_instance_class
+  allocated_storage     = 20
+  max_allocated_storage = 100
+  db_name               = "portfolio"
+  username              = "db_admin"
+  password              = random_password.db_password.result
+
+  multi_az               = true
+  db_subnet_group_name   = aws_db_subnet_group.portfolio.name
+  vpc_security_group_ids = [module.vpc.security_group_ids["rds-sg"]]
+
+  storage_encrypted   = true
+  skip_final_snapshot = true
+  deletion_protection = false
+
+  tags = { Name = "${var.stack_name}-portfolio" }
 }
 
 data "aws_iam_role" "lab_role" {
