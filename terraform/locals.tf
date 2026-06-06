@@ -107,7 +107,7 @@ locals {
         SQS_QUEUE_URL       = aws_sqs_queue.main.url
         DYNAMODB_TABLE_NAME = module.dynamodb_simulations.dynamodb_table_id
         DYNAMODB_USER_TABLE = module.dynamodb_user.dynamodb_table_id
-        DB_HOST             = aws_db_instance.portfolio.address
+        DB_HOST             = aws_db_proxy.portfolio.endpoint
         DB_PORT             = tostring(aws_db_instance.portfolio.port)
         DB_NAME             = "portfolio"
         DB_USER             = "db_admin"
@@ -136,7 +136,7 @@ locals {
         SQS_QUEUE_URL          = aws_sqs_queue.main.url
         MODEL_ARTIFACTS_BUCKET = aws_s3_bucket.model_artifacts.id
         MODEL_ARTIFACTS_PREFIX = "v1/"
-        DB_HOST                = aws_db_instance.portfolio.address
+        DB_HOST                = aws_db_proxy.portfolio.endpoint
         DB_PORT                = tostring(aws_db_instance.portfolio.port)
         DB_NAME                = "portfolio"
         DB_USER                = "db_admin"
@@ -161,7 +161,7 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DB_HOST     = aws_db_instance.portfolio.address
+        DB_HOST     = aws_db_proxy.portfolio.endpoint
         DB_PORT     = tostring(aws_db_instance.portfolio.port)
         DB_NAME     = "portfolio"
         DB_USER     = "db_admin"
@@ -175,7 +175,7 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DB_HOST     = aws_db_instance.portfolio.address
+        DB_HOST     = aws_db_proxy.portfolio.endpoint
         DB_PORT     = tostring(aws_db_instance.portfolio.port)
         DB_NAME     = "portfolio"
         DB_USER     = "db_admin"
@@ -202,7 +202,7 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DB_HOST     = aws_db_instance.portfolio.address
+        DB_HOST     = aws_db_proxy.portfolio.endpoint
         DB_PORT     = tostring(aws_db_instance.portfolio.port)
         DB_NAME     = "portfolio"
         DB_USER     = "db_admin"

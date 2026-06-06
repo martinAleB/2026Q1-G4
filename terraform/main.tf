@@ -337,3 +337,52 @@ resource "aws_sqs_queue" "main" {
     maxReceiveCount     = var.sqs_max_receive_count
   })
 }
+
+resource "aws_db_proxy" "portfolio" {
+  name                   = "${var.stack_name}-portfolio-proxy"
+  debug_logging          = false
+  engine_family          = "POSTGRESQL"
+  idle_client_timeout    = 1800
+  require_tls            = true
+  role_arn               = data.aws_iam_role.lab_role.arn
+  vpc_subnet_ids         = [
+    module.vpc.subnet_ids[var.db_subnet_cidrs[0]],
+    module.vpc.subnet_ids[var.db_subnet_cidrs[1]],
+  ]
+  vpc_security_group_ids = [module.vpc.security_group_ids["rds-sg"]]
+
+  auth {
+    auth_scheme = "SECRETS"
+    description = "RDS Proxy authentication using Secrets Manager"
+    iam_auth    = "DISABLED"
+    secret_arn  = aws_secretsmanager_secret.db_credentials.arn
+  }
+
+  tags = { Name = "${var.stack_name}-portfolio-proxy" }
+}
+
+resource "aws_db_proxy_default_target_group" "portfolio" {
+  db_proxy_name = aws_db_proxy.portfolio.name
+
+  connection_pool_config {
+    connection_borrow_timeout    = 120
+    max_connections_percent      = 100
+    max_idle_connections_percent = 50
+  }
+}
+
+resource "aws_db_proxy_target" "portfolio" {
+  db_proxy_name          = aws_db_proxy.portfolio.name
+  target_group_name      = aws_db_proxy_default_target_group.portfolio.name
+  db_instance_identifier = aws_db_instance.portfolio.id
+}
+
+resource "aws_security_group_rule" "rds_allow_proxy" {
+  type                     = "ingress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  security_group_id        = module.vpc.security_group_ids["rds-sg"]
+  source_security_group_id = module.vpc.security_group_ids["rds-sg"]
+  description              = "Allow PostgreSQL from RDS Proxy (self)"
+}
