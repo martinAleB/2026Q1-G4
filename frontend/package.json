@@ -6,7 +6,7 @@
   "scripts": {
     "predev": "./setup-env.sh",
     "dev": "vite",
-    "dev:mock": "rm -f .env.local && node mock-server.js & VITE_MOCK=true vite; kill %1 2>/dev/null; true",
+    "dev:mock": "rm -f .env.local && node mock-server.js & VITE_MOCK=true VITE_SIMULATIONS_API_URL=http://localhost:3001 vite; kill %1 2>/dev/null; true",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -22,6 +22,7 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-router-dom": "^7.14.0",
+    "recharts": "^2.15.0",
     "shadcn": "^4.2.0",
     "tailwind-merge": "^3.5.0",
     "tw-animate-css": "^1.4.0"

@@ -23,6 +23,7 @@ locals {
     "portfolio-get"             = "${path.root}/../backend/portfolio-get"
     "portfolio-updater"         = "${path.root}/../backend/portfolio-updater"
     "db-migrations"             = "${path.root}/../backend/db"
+    "simulate-config"            = "${path.root}/../backend/simulate-config"
   }
 
   lambda_configs = {
@@ -194,6 +195,20 @@ locals {
         SECRET_ARN = aws_secretsmanager_secret.db_credentials.arn
       }
     }
+    "simulate-config" = {
+      handler     = "index.handler"
+      runtime     = var.lambda_node_runtime
+      timeout     = 30
+      memory_size = 256
+      in_vpc      = true
+      env_vars = {
+        DB_HOST     = aws_db_instance.portfolio.address
+        DB_PORT     = tostring(aws_db_instance.portfolio.port)
+        DB_NAME     = "portfolio"
+        DB_USER     = "db_admin"
+        DB_PASSWORD = random_password.db_password.result
+      }
+    }
   }
 
   lambda_permissions = {
@@ -237,6 +252,9 @@ locals {
       { principal = "events.amazonaws.com", source_arn = aws_cloudwatch_event_rule.portfolio_updater.arn },
       { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" },
     ]
+    "simulate-config" = [
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" }
+    ]
   }
 
   lambda_async_dlq_arns = {
@@ -257,6 +275,7 @@ locals {
     "recommendations-get" = aws_lambda_function.lambdas["recommendations-get"].invoke_arn
     "portfolio-get"       = aws_lambda_function.lambdas["portfolio-get"].invoke_arn
     "portfolio-updater"   = aws_lambda_function.lambdas["portfolio-updater"].invoke_arn
+    "simulate-config"     = aws_lambda_function.lambdas["simulate-config"].invoke_arn
   }
 
   api_routes = {
@@ -272,5 +291,6 @@ locals {
     "recommendations-get" = { route_key = "GET /recommendations", integration = "recommendations-get", auth = true }
     "portfolio-get"       = { route_key = "GET /portfolio", integration = "portfolio-get", auth = true }
     "portfolio-refresh"   = { route_key = "POST /portfolio/refresh", integration = "portfolio-updater", auth = true }
+    "simulate-config-get" = { route_key = "GET /simulations/simulate-config", integration = "simulate-config", auth = true }
   }
 }
