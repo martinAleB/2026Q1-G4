@@ -130,7 +130,14 @@ module "vpc" {
           from_port          = 443
           to_port            = 443
           security_group_ref = "lambda-sg"
-          description        = "HTTPS from Lambdas to the SQS interface endpoint"
+          description        = "HTTPS from Lambdas to VPC interface endpoints"
+        },
+        {
+          protocol           = "tcp"
+          from_port          = 443
+          to_port            = 443
+          security_group_ref = "rds-sg"
+          description        = "HTTPS from RDS Proxy to Secrets Manager interface endpoint"
         },
       ]
       outbound = []
@@ -146,7 +153,22 @@ module "vpc" {
           description        = "PostgreSQL from Lambdas"
         },
       ]
-      outbound = []
+      outbound = [
+        {
+          protocol           = "tcp"
+          from_port          = 443
+          to_port            = 443
+          security_group_ref = "interface-endpoints-sg"
+          description        = "HTTPS to Secrets Manager interface endpoint"
+        },
+        {
+          protocol           = "tcp"
+          from_port          = 5432
+          to_port            = 5432
+          security_group_ref = "rds-sg"
+          description        = "Outbound to PostgreSQL database (self)"
+        }
+      ]
     },
   ]
 
@@ -174,6 +196,22 @@ module "vpc" {
     {
       name                = "logs"
       service             = "com.amazonaws.${var.aws_region}.logs"
+      type                = "Interface"
+      subnets             = var.private_subnet_cidrs
+      security_group_refs = ["interface-endpoints-sg"]
+      private_dns_enabled = true
+    },
+    {
+      name                = "secretsmanager"
+      service             = "com.amazonaws.${var.aws_region}.secretsmanager"
+      type                = "Interface"
+      subnets             = var.private_subnet_cidrs
+      security_group_refs = ["interface-endpoints-sg"]
+      private_dns_enabled = true
+    },
+    {
+      name                = "kms"
+      service             = "com.amazonaws.${var.aws_region}.kms"
       type                = "Interface"
       subnets             = var.private_subnet_cidrs
       security_group_refs = ["interface-endpoints-sg"]
@@ -298,13 +336,14 @@ resource "aws_db_subnet_group" "portfolio" {
 resource "aws_db_instance" "portfolio" {
   identifier            = "${var.stack_name}-portfolio"
   engine                = "postgres"
-  engine_version        = "15.7"
+  engine_version        = "15.10"
   instance_class        = var.rds_instance_class
   allocated_storage     = 20
   max_allocated_storage = 100
   db_name               = "portfolio"
   username              = "db_admin"
   password              = random_password.db_password.result
+  apply_immediately     = true
 
   multi_az               = true
   db_subnet_group_name   = aws_db_subnet_group.portfolio.name
@@ -374,7 +413,7 @@ resource "aws_db_proxy_default_target_group" "portfolio" {
 resource "aws_db_proxy_target" "portfolio" {
   db_proxy_name          = aws_db_proxy.portfolio.name
   target_group_name      = aws_db_proxy_default_target_group.portfolio.name
-  db_instance_identifier = aws_db_instance.portfolio.id
+  db_instance_identifier = aws_db_instance.portfolio.identifier
 }
 
 resource "aws_security_group_rule" "rds_allow_proxy" {

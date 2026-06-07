@@ -69,7 +69,7 @@ exports.handler = async (event) => {
         try {
             await dbClient.query(
                 `INSERT INTO portfolio_cuits (cuit, current_status, previous_status, trend, last_updated)
-                 VALUES ($1, 1, 1, 'stable', NOW())
+                 VALUES ($1, 0, 0, 'stable', NOW())
                  ON CONFLICT (cuit) DO NOTHING`,
                 [cuit]
             );

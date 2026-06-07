@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import {
   BarChart3,
   FlaskConical,
@@ -311,14 +311,14 @@ export default function SimulationConfigPage() {
   const [error, setError] = useState('')
   const [hasRun, setHasRun] = useState(false)
 
-  const curr = {
+  const curr = useMemo(() => ({
     curr_sit: fintechData?.max_situacion_crediticia ?? 2,
     curr_cant: fintechData?.max_entidades_con_deuda ?? 3,
     curr_deuda: fintechData?.max_deuda_total_ars ?? 350000,
     curr_meses: fintechData?.min_meses_situacion_1 ?? 6,
     curr_dias: fintechData?.max_dias_atraso ?? 30,
     curr_proceso: fintechData?.permite_proceso_judicial ?? false,
-  }
+  }), [fintechData])
 
   function setParam(key, value) {
     setParams(p => ({ ...p, [key]: value }))
@@ -335,7 +335,12 @@ export default function SimulationConfigPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || `Error ${res.status}`)
-      setResult(data)
+
+      const isPortfolioEmpty = res.headers.get('x-portfolio-empty') === 'true' || data.empty === true;
+      setResult({
+        ...data,
+        empty: isPortfolioEmpty
+      })
       setHasRun(true)
     } catch (err) {
       setError(err.message || 'Error al ejecutar la simulación')
@@ -343,6 +348,7 @@ export default function SimulationConfigPage() {
       setIsLoading(false)
     }
   }, [params, curr])
+
 
   const goToSimulations = () => {
     window.location.hash = '/dashboard/simulations'
@@ -370,13 +376,25 @@ export default function SimulationConfigPage() {
     : null
 
   return (
-    <div className="space-y-8 p-8">
+    <div className="space-y-4 p-8">
       <div>
         <h1 className="mb-2 text-3xl font-bold">Simulador de Configuraciones</h1>
         <p className="text-muted-foreground">
           Ajustá los parámetros y ejecutá la simulación para ver cómo impactan sobre la elegibilidad de tu cartera.
         </p>
       </div>
+
+      {result?.empty && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-600 dark:text-amber-400">
+          <ShieldAlert className="size-5 shrink-0 text-amber-500" />
+          <div className="space-y-1">
+            <p className="font-semibold text-amber-800 dark:text-amber-300">Cartera vacía o sin analizar</p>
+            <p className="text-xs text-amber-700/90 dark:text-amber-400/90">
+              No tenés clientes con score en la cartera. No se pueden realizar comparativas hasta que ejecutes alguna simulación individual.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-8 lg:grid-cols-[380px_1fr]">
         <div className="space-y-4">
@@ -460,7 +478,7 @@ export default function SimulationConfigPage() {
                 id="btn-run-simulation"
                 className="w-full gap-2"
                 onClick={runSimulation}
-                disabled={isLoading}
+                disabled={isLoading || result?.empty}
               >
                 {isLoading ? (
                   <><Loader2 className="size-4 animate-spin" /> Calculando...</>

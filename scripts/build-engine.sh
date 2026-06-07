@@ -30,8 +30,8 @@ echo "[$(date +%T)] Ejecutando limpieza para bajar de 50MB..."
 find "${BUILD_DIR}" -type d -name "tests"      -exec rm -rf {} + 2>/dev/null || true
 find "${BUILD_DIR}" -type d -name "test"       -exec rm -rf {} + 2>/dev/null || true
 find "${BUILD_DIR}" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-find "${BUILD_DIR}" -type d -name "*.dist-info" -exec rm -rf {} + 2>/dev/null || true
-find "${BUILD_DIR}" -type d -name "*.egg-info"  -exec rm -rf {} + 2>/dev/null || true
+# find "${BUILD_DIR}" -type d -name "*.dist-info" -exec rm -rf {} + 2>/dev/null || true
+# find "${BUILD_DIR}" -type d -name "*.egg-info"  -exec rm -rf {} + 2>/dev/null || true
 
 find "${BUILD_DIR}/numpy" -name "*cpython-311*" -delete 2>/dev/null || true
 find "${BUILD_DIR}/numpy" -name "*cpython-310*" -delete 2>/dev/null || true

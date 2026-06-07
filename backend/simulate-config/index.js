@@ -9,7 +9,11 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false },
 });
 
-const headers = { 'Content-Type': 'application/json' };
+const headers = { 
+    'Content-Type': 'application/json',
+    'Access-Control-Expose-Headers': 'X-Portfolio-Empty'
+};
+
 
 exports.handler = async (event) => {
     try {
@@ -20,18 +24,30 @@ exports.handler = async (event) => {
 
         const query = event.queryStringParameters || {};
 
-        const curr_sit = query.curr_sit !== undefined ? parseInt(query.curr_sit, 10) : 2;
-        const curr_cant = query.curr_cant !== undefined ? parseInt(query.curr_cant, 10) : 3;
-        const curr_deuda = query.curr_deuda !== undefined ? parseFloat(query.curr_deuda) : 350000;
-        const curr_meses = query.curr_meses !== undefined ? parseInt(query.curr_meses, 10) : 6;
-        const curr_dias = query.curr_dias !== undefined ? parseInt(query.curr_dias, 10) : 30;
+        const parseQueryInt = (val, fallback) => {
+            if (val === undefined || val === null || val === 'null' || val === 'undefined' || val === '') return fallback;
+            const parsed = parseInt(val, 10);
+            return Number.isNaN(parsed) ? fallback : parsed;
+        };
+
+        const parseQueryFloat = (val, fallback) => {
+            if (val === undefined || val === null || val === 'null' || val === 'undefined' || val === '') return fallback;
+            const parsed = parseFloat(val);
+            return Number.isNaN(parsed) ? fallback : parsed;
+        };
+
+        const curr_sit = parseQueryInt(query.curr_sit, 2);
+        const curr_cant = parseQueryInt(query.curr_cant, 3);
+        const curr_deuda = parseQueryFloat(query.curr_deuda, 350000);
+        const curr_meses = parseQueryInt(query.curr_meses, 6);
+        const curr_dias = parseQueryInt(query.curr_dias, 30);
         const curr_proceso = query.curr_proceso === 'true';
 
-        const sim_sit = query.sim_sit !== undefined ? parseInt(query.sim_sit, 10) : undefined;
-        const sim_cant = query.sim_cant !== undefined ? parseInt(query.sim_cant, 10) : undefined;
-        const sim_deuda = query.sim_deuda !== undefined ? parseFloat(query.sim_deuda) : undefined;
-        const sim_meses = query.sim_meses !== undefined ? parseInt(query.sim_meses, 10) : undefined;
-        const sim_dias = query.sim_dias !== undefined ? parseInt(query.sim_dias, 10) : undefined;
+        const sim_sit = parseQueryInt(query.sim_sit, undefined);
+        const sim_cant = parseQueryInt(query.sim_cant, undefined);
+        const sim_deuda = parseQueryFloat(query.sim_deuda, undefined);
+        const sim_meses = parseQueryInt(query.sim_meses, undefined);
+        const sim_dias = parseQueryInt(query.sim_dias, undefined);
         const sim_proceso = query.sim_proceso === 'true';
 
         if (
@@ -43,6 +59,28 @@ exports.handler = async (event) => {
 
         const client = await pool.connect();
         try {
+            // Verificar si la tabla existe antes de consultar
+            const tableCheck = await client.query(`
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'portfolio_tracking'
+                )
+            `);
+            const tablesExist = tableCheck.rows[0].exists;
+
+            if (!tablesExist) {
+                return {
+                    statusCode: 200,
+                    headers: { ...headers, 'X-Portfolio-Empty': 'true' },
+                    body: JSON.stringify({
+                        empty: true,
+                        total_portfolio_count: 0,
+                        total_scored: 0,
+                    }),
+                };
+            }
+
             const portfolioCount = await client.query(
                 'SELECT COUNT(*) FROM portfolio_tracking WHERE fintech_sub = $1',
                 [sub]
@@ -60,7 +98,7 @@ exports.handler = async (event) => {
             if (total_scored === 0) {
                 return {
                     statusCode: 200,
-                    headers,
+                    headers: { ...headers, 'X-Portfolio-Empty': 'true' },
                     body: JSON.stringify({
                         empty: true,
                         total_portfolio_count,

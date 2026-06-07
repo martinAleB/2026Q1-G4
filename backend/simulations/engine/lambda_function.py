@@ -406,12 +406,22 @@ def persist_features_to_rds(cuit: str, features: dict, score: float):
         conn.run(
             """
             INSERT INTO portfolio_cuits (
-                cuit, situacion, cant_entidades, deuda_total_ars,
-                meses_en_sit1, dias_atraso_max, proceso_judicial, score, features_updated_at
+                cuit, current_status, previous_status, trend, situacion, cant_entidades, deuda_total_ars,
+                meses_en_sit1, dias_atraso_max, proceso_judicial, score, features_updated_at, last_updated
             ) VALUES (
-                :cuit, :sit, :cant, :deuda, :meses, :dias, :proceso, :score, NOW()
+                :cuit, :sit, :sit, 'stable', :sit, :cant, :deuda, :meses, :dias, :proceso, :score, NOW(), NOW()
             )
             ON CONFLICT (cuit) DO UPDATE SET
+                previous_status      = CASE 
+                                            WHEN portfolio_cuits.current_status = 0 THEN EXCLUDED.current_status 
+                                            ELSE portfolio_cuits.current_status 
+                                       END,
+                current_status       = EXCLUDED.current_status,
+                trend                = CASE
+                                            WHEN portfolio_cuits.current_status = 0 OR portfolio_cuits.current_status = EXCLUDED.current_status THEN 'stable'
+                                            WHEN EXCLUDED.current_status > portfolio_cuits.current_status THEN 'down'
+                                            ELSE 'up'
+                                       END,
                 situacion            = EXCLUDED.situacion,
                 cant_entidades       = EXCLUDED.cant_entidades,
                 deuda_total_ars      = EXCLUDED.deuda_total_ars,
@@ -419,7 +429,8 @@ def persist_features_to_rds(cuit: str, features: dict, score: float):
                 dias_atraso_max      = EXCLUDED.dias_atraso_max,
                 proceso_judicial     = EXCLUDED.proceso_judicial,
                 score                = EXCLUDED.score,
-                features_updated_at  = EXCLUDED.features_updated_at
+                features_updated_at  = EXCLUDED.features_updated_at,
+                last_updated         = NOW()
             """,
             cuit=cuit,
             sit=int(features.get('situacion', 0)),
@@ -429,6 +440,37 @@ def persist_features_to_rds(cuit: str, features: dict, score: float):
             dias=int(features.get('dias_atraso_max', 0)),
             proceso=bool(int(features.get('proceso_judicial', 0))),
             score=score,
+        )
+    finally:
+        conn.close()
+
+
+def persist_no_data_to_rds(cuit: str):
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
+    conn = pg8000.native.Connection(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        ssl_context=ssl_ctx,
+    )
+    try:
+        conn.run(
+            """
+            INSERT INTO portfolio_cuits (
+                cuit, current_status, previous_status, trend, situacion, last_updated
+            ) VALUES (
+                :cuit, 0, 0, 'stable', 0, NOW()
+            )
+            ON CONFLICT (cuit) DO UPDATE SET
+                current_status       = 0,
+                situacion            = 0,
+                last_updated         = NOW()
+            """,
+            cuit=cuit,
         )
     finally:
         conn.close()
@@ -477,6 +519,10 @@ def lambda_handler(event, context):
         except NoRetryError as e:
             print(f"Sin datos para {task_id}: {str(e)}")
             if task_id and sub and cuit:
+                try:
+                    persist_no_data_to_rds(cuit)
+                except Exception as db_err:
+                    print(f"Error persisting no_data to RDS for {cuit}: {str(db_err)}")
                 update_simulation_status(sub, cuit, task_id, "NO_DATA", error=str(e))
 
         except Exception as e:

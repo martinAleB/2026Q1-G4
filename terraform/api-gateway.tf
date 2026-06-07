@@ -7,7 +7,7 @@ resource "aws_apigatewayv2_api" "main" {
       ["http://${aws_s3_bucket_website_configuration.frontend.website_endpoint}"],
       var.cors_additional_origins,
     )
-    allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"]
     allow_headers = ["Content-Type", "Authorization"]
   }
 }

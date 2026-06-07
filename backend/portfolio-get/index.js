@@ -25,6 +25,32 @@ exports.handler = async (event) => {
 
         const client = await pool.connect();
         try {
+            // Verificar si las tablas existen antes de consultar
+            const tableCheck = await client.query(`
+                SELECT (
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'portfolio_tracking'
+                    )
+                ) AND (
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'portfolio_cuits'
+                    )
+                ) AS exists
+            `);
+            const tablesExist = tableCheck.rows[0].exists;
+
+            if (!tablesExist) {
+                return {
+                    statusCode: 200,
+                    headers,
+                    body: JSON.stringify({ items: [], total: 0, limit, offset }),
+                };
+            }
+
             if (searchCuit) {
                 const { rows } = await client.query(
                     `SELECT c.cuit, c.current_status, c.previous_status, c.trend,
