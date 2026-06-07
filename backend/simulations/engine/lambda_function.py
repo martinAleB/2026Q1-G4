@@ -502,17 +502,17 @@ def lambda_handler(event, context):
             if features is None:
                 raise NoRetryError("No hay suficientes periodos en BCRA (min 7).")
 
-            fintech_params = get_fintech_params(sub)
-            rejection_reasons = apply_filter(features, fintech_params)
-            if rejection_reasons:
-                print(f"Cliente rechazado por política de fintech: {rejection_reasons}")
-                update_simulation_status(sub, cuit, task_id, "REJECTED", rejection_reasons=rejection_reasons)
-                continue
-
             score = predecir_score(features)
             print(f"Score calculado: {score}")
 
             persist_features_to_rds(cuit, features, score)
+
+            fintech_params = get_fintech_params(sub)
+            rejection_reasons = apply_filter(features, fintech_params)
+            if rejection_reasons:
+                print(f"Cliente rechazado por política de fintech: {rejection_reasons}")
+                update_simulation_status(sub, cuit, task_id, "REJECTED", score=score, rejection_reasons=rejection_reasons)
+                continue
 
             update_simulation_status(sub, cuit, task_id, "COMPLETED", score=score)
 
