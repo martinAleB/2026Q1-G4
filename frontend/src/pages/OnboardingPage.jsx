@@ -24,7 +24,7 @@ export default function OnboardingPage() {
     
     try {
       const response = await fetch(`${import.meta.env.VITE_API_GATEWAY_CALLBACK_URL.replace('/callback', '')}/fintech`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${tokens.idToken}`

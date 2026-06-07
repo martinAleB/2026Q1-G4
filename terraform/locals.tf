@@ -281,7 +281,7 @@ locals {
   api_routes = {
     "callback"            = { route_key = "GET /callback", integration = "auth-callback", auth = false }
     "fintech-get"         = { route_key = "GET /fintech", integration = "fintech-get", auth = true }
-    "fintech-put"         = { route_key = "PUT /fintech", integration = "fintech-update", auth = true }
+    "fintech-patch"       = { route_key = "PATCH /fintech", integration = "fintech-update", auth = true }
     "product-get"         = { route_key = "GET /product", integration = "product-get", auth = true }
     "product-post"        = { route_key = "POST /product", integration = "product-create", auth = true }
     "product-put"         = { route_key = "PUT /product/{id}", integration = "product-update", auth = true }

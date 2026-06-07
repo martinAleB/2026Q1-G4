@@ -178,7 +178,7 @@ export default function ParametersPage() {
 
     try {
       const res = await fetch(`${API}/fintech`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify(payload),
       })
