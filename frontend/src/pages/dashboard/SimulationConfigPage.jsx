@@ -483,7 +483,7 @@ export default function SimulationConfigPage() {
                 {isLoading ? (
                   <><Loader2 className="size-4 animate-spin" /> Calculando...</>
                 ) : (
-                  <><FlaskConical className="size-4" /> Ejecutar simulación</>
+                  <><FlaskConical className="size-4" /> Ejecutar Simulación</>
                 )}
               </Button>
 

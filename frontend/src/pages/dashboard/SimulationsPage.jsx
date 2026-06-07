@@ -50,6 +50,61 @@ function formatDate(isoString) {
   }).format(new Date(isoString))
 }
 
+function formatRejectionReason(reason) {
+  if (!reason) return 'Sin detalle disponible.'
+
+  const cleanReason = reason.trim()
+
+  // 1. situacion_actual
+  let match = cleanReason.match(/^situacion_actual=([\d.]+)\s*>\s*max_situacion_crediticia=([\d.]+)$/)
+  if (match) {
+    const [, actual, maxVal] = match
+    return `La situación crediticia actual (${actual}) supera la máxima permitida por la fintech (${maxVal}).`
+  }
+
+  // 2. cant_entidades
+  match = cleanReason.match(/^cant_entidades=([\d.]+)\s*>\s*max_entidades_con_deuda=([\d.]+)$/)
+  if (match) {
+    const [, actual, maxVal] = match
+    return `La cantidad de entidades financieras con deuda (${actual}) supera el límite permitido (${maxVal}).`
+  }
+
+  // 3. deuda_total_ars
+  match = cleanReason.match(/^deuda_total_ars=([\d.]+)\s*>\s*max_deuda_total_ars=([\d.]+)$/)
+  if (match) {
+    const [, actual, maxVal] = match
+    const actualNum = parseFloat(actual)
+    const maxValNum = parseFloat(maxVal)
+    return `La deuda total registrada (${formatARS(actualNum)}) supera el límite máximo permitido (${formatARS(maxValNum)}).`
+  }
+
+  // 4. meses_en_sit1
+  match = cleanReason.match(/^meses_en_sit1=([\d.]+)\s*<\s*min_meses_situacion_1=([\d.]+)$/)
+  if (match) {
+    const [, actual, minVal] = match
+    return `Los meses consecutivos en situación normal/1 (${actual}) son menores al mínimo requerido (${minVal}).`
+  }
+
+  // 5. dias_atraso
+  match = cleanReason.match(/^dias_atraso=([\d.]+)\s*>\s*max_dias_atraso=([\d.]+)$/)
+  if (match) {
+    const [, actual, maxVal] = match
+    return `Los días de atraso acumulados (${actual}) superan el máximo permitido (${maxVal} días).`
+  }
+
+  // 6. proceso_judicial
+  if (cleanReason.includes('proceso_judicial')) {
+    return 'El cliente registra antecedentes de procesos judiciales (no admitido por la fintech).'
+  }
+
+  // Fallback
+  return cleanReason
+    .replace(/_/g, ' ')
+    .replace(/=/g, ': ')
+    .replace(/>/g, 'supera a')
+    .replace(/</g, 'es menor a')
+}
+
 function ScoreBadge({ score, estado }) {
   if (estado === 'pendiente') {
     return <span className="text-sm text-yellow-600">Pendiente</span>
@@ -166,10 +221,10 @@ function RecommendationsDialog({ open, onOpenChange, query, recommendations, isL
               <div className="flex items-start gap-2">
                 <Ban className="mt-0.5 size-4 shrink-0" />
                 <div className="space-y-1.5">
-                  <p className="font-medium">Motivos del rechazo</p>
+                  <p className="font-medium">Motivos del Rechazo</p>
                   {rejection_reasons.length > 0 ? (
-                    <ul className="list-disc pl-4 space-y-0.5 text-xs">
-                      {rejection_reasons.map((r, i) => <li key={i}>{r}</li>)}
+                    <ul className="list-disc pl-4 space-y-1 text-xs">
+                      {rejection_reasons.map((r, i) => <li key={i}>{formatRejectionReason(r)}</li>)}
                     </ul>
                   ) : (
                     <p className="text-xs">Sin detalle disponible.</p>
