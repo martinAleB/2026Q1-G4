@@ -12,6 +12,11 @@ resource "aws_apigatewayv2_api" "main" {
   }
 }
 
+resource "aws_cloudwatch_log_group" "api_access_logs" {
+  name              = "/aws/apigateway/${var.stack_name}-api"
+  retention_in_days = var.lambda_log_retention_days
+}
+
 resource "aws_apigatewayv2_stage" "main" {
   api_id      = aws_apigatewayv2_api.main.id
   name        = "$default"
@@ -20,6 +25,21 @@ resource "aws_apigatewayv2_stage" "main" {
   default_route_settings {
     throttling_rate_limit  = var.api_throttling_rate_limit
     throttling_burst_limit = var.api_throttling_burst_limit
+  }
+
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_access_logs.arn
+    format = jsonencode({
+      requestId        = "$context.requestId"
+      ip               = "$context.identity.sourceIp"
+      requestTime      = "$context.requestTime"
+      httpMethod       = "$context.httpMethod"
+      routeKey         = "$context.routeKey"
+      status           = "$context.status"
+      protocol         = "$context.protocol"
+      responseLength   = "$context.responseLength"
+      integrationError = "$context.integrationErrorMessage"
+    })
   }
 }
 

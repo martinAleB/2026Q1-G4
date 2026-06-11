@@ -23,7 +23,7 @@ locals {
     "portfolio-get"             = "${path.root}/../backend/portfolio-get"
     "portfolio-updater"         = "${path.root}/../backend/portfolio-updater"
     "db-migrations"             = "${path.root}/../backend/db"
-    "simulate-config"            = "${path.root}/../backend/simulate-config"
+    "simulate-config"           = "${path.root}/../backend/simulate-config"
   }
 
   lambda_configs = {
@@ -110,8 +110,7 @@ locals {
         DB_HOST             = aws_db_proxy.portfolio.endpoint
         DB_PORT             = tostring(aws_db_instance.portfolio.port)
         DB_NAME             = "portfolio"
-        DB_USER             = "db_admin"
-        DB_PASSWORD         = random_password.db_password.result
+        DB_SECRET_ARN       = aws_secretsmanager_secret.db_credentials.arn
       }
     }
     "simulations-results" = {
@@ -139,8 +138,7 @@ locals {
         DB_HOST                = aws_db_proxy.portfolio.endpoint
         DB_PORT                = tostring(aws_db_instance.portfolio.port)
         DB_NAME                = "portfolio"
-        DB_USER                = "db_admin"
-        DB_PASSWORD            = random_password.db_password.result
+        DB_SECRET_ARN          = aws_secretsmanager_secret.db_credentials.arn
       }
     }
     "recommendations-get" = {
@@ -161,11 +159,10 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DB_HOST     = aws_db_proxy.portfolio.endpoint
-        DB_PORT     = tostring(aws_db_instance.portfolio.port)
-        DB_NAME     = "portfolio"
-        DB_USER     = "db_admin"
-        DB_PASSWORD = random_password.db_password.result
+        DB_HOST       = aws_db_proxy.portfolio.endpoint
+        DB_PORT       = tostring(aws_db_instance.portfolio.port)
+        DB_NAME       = "portfolio"
+        DB_SECRET_ARN = aws_secretsmanager_secret.db_credentials.arn
       }
     }
     "portfolio-updater" = {
@@ -175,11 +172,10 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DB_HOST     = aws_db_proxy.portfolio.endpoint
-        DB_PORT     = tostring(aws_db_instance.portfolio.port)
-        DB_NAME     = "portfolio"
-        DB_USER     = "db_admin"
-        DB_PASSWORD = random_password.db_password.result
+        DB_HOST       = aws_db_proxy.portfolio.endpoint
+        DB_PORT       = tostring(aws_db_instance.portfolio.port)
+        DB_NAME       = "portfolio"
+        DB_SECRET_ARN = aws_secretsmanager_secret.db_credentials.arn
       }
     }
     "db-migrations" = {
@@ -202,11 +198,10 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DB_HOST     = aws_db_proxy.portfolio.endpoint
-        DB_PORT     = tostring(aws_db_instance.portfolio.port)
-        DB_NAME     = "portfolio"
-        DB_USER     = "db_admin"
-        DB_PASSWORD = random_password.db_password.result
+        DB_HOST       = aws_db_proxy.portfolio.endpoint
+        DB_PORT       = tostring(aws_db_instance.portfolio.port)
+        DB_NAME       = "portfolio"
+        DB_SECRET_ARN = aws_secretsmanager_secret.db_credentials.arn
       }
     }
   }

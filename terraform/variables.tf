@@ -103,6 +103,12 @@ variable "sqs_max_receive_count" {
   default     = 3
 }
 
+variable "sqs_engine_max_concurrency" {
+  description = "Maximum number of concurrent simulations-engine invocations the SQS event source mapping may trigger. Caps the async worker so a burst of simulations cannot consume the whole lab concurrency quota (10) and starve the synchronous API Lambdas."
+  type        = number
+  default     = 5
+}
+
 variable "lambda_log_retention_days" {
   description = "CloudWatch retention applied to every Lambda log group. Without this, AWS keeps logs forever and the lab budget bleeds slowly. 7 days is enough for daily debugging in a POC."
   type        = number
@@ -113,4 +119,10 @@ variable "rds_instance_class" {
   description = "RDS instance class for the portfolio PostgreSQL database"
   type        = string
   default     = "db.t3.micro"
+}
+
+variable "rds_backup_retention_period" {
+  description = "Days of automated backups retained for the portfolio RDS instance. The AWS provider default is 0, which disables automated backups; setting it enables point-in-time recovery for the database."
+  type        = number
+  default     = 7
 }

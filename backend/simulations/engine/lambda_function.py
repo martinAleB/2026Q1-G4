@@ -30,6 +30,7 @@ _FILL_VALUES = None
 dynamodb = boto3.client('dynamodb')
 sqs = boto3.client('sqs')
 s3 = boto3.client('s3')
+secretsmanager = boto3.client('secretsmanager')
 DYNAMODB_TABLE         = os.environ.get('DYNAMODB_TABLE_NAME')
 DYNAMODB_FINTECH_TABLE = os.environ.get('DYNAMODB_FINTECH_TABLE')
 SQS_QUEUE_URL          = os.environ.get('SQS_QUEUE_URL')
@@ -38,8 +39,10 @@ MODEL_ARTIFACTS_PREFIX = os.environ.get('MODEL_ARTIFACTS_PREFIX', 'v1/')
 DB_HOST                = os.environ.get('DB_HOST')
 DB_PORT                = int(os.environ.get('DB_PORT', '5432'))
 DB_NAME                = os.environ.get('DB_NAME')
-DB_USER                = os.environ.get('DB_USER')
-DB_PASSWORD            = os.environ.get('DB_PASSWORD')
+DB_SECRET_ARN          = os.environ.get('DB_SECRET_ARN')
+_db_credentials        = json.loads(secretsmanager.get_secret_value(SecretId=DB_SECRET_ARN)['SecretString'])
+DB_USER                = _db_credentials['username']
+DB_PASSWORD            = _db_credentials['password']
 
 
 def _required_env(name: str) -> str:

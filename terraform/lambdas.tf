@@ -33,6 +33,10 @@ resource "aws_lambda_event_source_mapping" "simulations_engine" {
   event_source_arn = aws_sqs_queue.main.arn
   function_name    = aws_lambda_function.lambdas["simulations-engine"].arn
   batch_size       = 1
+
+  scaling_config {
+    maximum_concurrency = var.sqs_engine_max_concurrency
+  }
 }
 
 resource "aws_cloudwatch_log_group" "lambdas" {

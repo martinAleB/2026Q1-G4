@@ -1,13 +1,31 @@
 const { Pool } = require('pg');
+const { SecretsManagerClient, GetSecretValueCommand } = require('@aws-sdk/client-secrets-manager');
 
-const pool = new Pool({
-    host: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT, 10),
-    database: process.env.DB_NAME,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    ssl: { rejectUnauthorized: false },
-});
+const smClient = new SecretsManagerClient({ region: 'us-east-1' });
+let poolPromise;
+
+function getPool() {
+    if (!poolPromise) {
+        poolPromise = (async () => {
+            const { SecretString } = await smClient.send(
+                new GetSecretValueCommand({ SecretId: process.env.DB_SECRET_ARN })
+            );
+            const { username, password } = JSON.parse(SecretString);
+            return new Pool({
+                host: process.env.DB_HOST,
+                port: parseInt(process.env.DB_PORT, 10),
+                database: process.env.DB_NAME,
+                user: username,
+                password,
+                ssl: { rejectUnauthorized: false },
+            });
+        })().catch((err) => {
+            poolPromise = undefined;
+            throw err;
+        });
+    }
+    return poolPromise;
+}
 
 const BCRA_BASE_URL = 'https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas';
 const BCRA_HEADERS = {
@@ -67,7 +85,7 @@ exports.handler = async (event) => {
     console.log('Iniciando portfolio-updater (BCRA real).');
 
     const sub = event?.requestContext?.authorizer?.jwt?.claims?.sub;
-    const client = await pool.connect();
+    const client = await (await getPool()).connect();
     let updated = 0;
     let skipped = 0;
     let noData = 0;

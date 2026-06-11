@@ -1,19 +1,37 @@
 const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
 const { DynamoDBClient, TransactWriteItemsCommand } = require('@aws-sdk/client-dynamodb');
+const { SecretsManagerClient, GetSecretValueCommand } = require('@aws-sdk/client-secrets-manager');
 const { Pool } = require('pg');
 const { v4: uuidv4 } = require('uuid');
 
 const sqsClient = new SQSClient({});
 const dynamoClient = new DynamoDBClient({});
+const smClient = new SecretsManagerClient({ region: 'us-east-1' });
 
-const pool = new Pool({
-    host: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT, 10),
-    database: process.env.DB_NAME,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    ssl: { rejectUnauthorized: false },
-});
+let poolPromise;
+
+function getPool() {
+    if (!poolPromise) {
+        poolPromise = (async () => {
+            const { SecretString } = await smClient.send(
+                new GetSecretValueCommand({ SecretId: process.env.DB_SECRET_ARN })
+            );
+            const { username, password } = JSON.parse(SecretString);
+            return new Pool({
+                host: process.env.DB_HOST,
+                port: parseInt(process.env.DB_PORT, 10),
+                database: process.env.DB_NAME,
+                user: username,
+                password,
+                ssl: { rejectUnauthorized: false },
+            });
+        })().catch((err) => {
+            poolPromise = undefined;
+            throw err;
+        });
+    }
+    return poolPromise;
+}
 
 const QUEUE_URL = process.env.SQS_QUEUE_URL;
 const DYNAMODB_TABLE = process.env.DYNAMODB_TABLE_NAME;
@@ -65,7 +83,7 @@ exports.handler = async (event) => {
         const taskId = uuidv4();
         const timestamp = new Date().toISOString();
 
-        const dbClient = await pool.connect();
+        const dbClient = await (await getPool()).connect();
         try {
             await dbClient.query(
                 `INSERT INTO portfolio_cuits (cuit, current_status, previous_status, trend, last_updated)

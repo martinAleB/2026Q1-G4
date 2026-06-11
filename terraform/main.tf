@@ -334,16 +334,17 @@ resource "aws_db_subnet_group" "portfolio" {
 }
 
 resource "aws_db_instance" "portfolio" {
-  identifier            = "${var.stack_name}-portfolio"
-  engine                = "postgres"
-  engine_version        = "15.10"
-  instance_class        = var.rds_instance_class
-  allocated_storage     = 20
-  max_allocated_storage = 100
-  db_name               = "portfolio"
-  username              = "db_admin"
-  password              = random_password.db_password.result
-  apply_immediately     = true
+  identifier              = "${var.stack_name}-portfolio"
+  engine                  = "postgres"
+  engine_version          = "15.10"
+  instance_class          = var.rds_instance_class
+  allocated_storage       = 20
+  max_allocated_storage   = 100
+  backup_retention_period = var.rds_backup_retention_period
+  db_name                 = "portfolio"
+  username                = "db_admin"
+  password                = random_password.db_password.result
+  apply_immediately       = true
 
   multi_az               = true
   db_subnet_group_name   = aws_db_subnet_group.portfolio.name
@@ -378,13 +379,13 @@ resource "aws_sqs_queue" "main" {
 }
 
 resource "aws_db_proxy" "portfolio" {
-  name                   = "${var.stack_name}-portfolio-proxy"
-  debug_logging          = false
-  engine_family          = "POSTGRESQL"
-  idle_client_timeout    = 1800
-  require_tls            = true
-  role_arn               = data.aws_iam_role.lab_role.arn
-  vpc_subnet_ids         = [
+  name                = "${var.stack_name}-portfolio-proxy"
+  debug_logging       = false
+  engine_family       = "POSTGRESQL"
+  idle_client_timeout = 1800
+  require_tls         = true
+  role_arn            = data.aws_iam_role.lab_role.arn
+  vpc_subnet_ids = [
     module.vpc.subnet_ids[var.db_subnet_cidrs[0]],
     module.vpc.subnet_ids[var.db_subnet_cidrs[1]],
   ]
