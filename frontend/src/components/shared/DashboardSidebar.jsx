@@ -8,6 +8,7 @@ import {
   Search,
   Sliders,
   User,
+  FlaskConical,
 } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
@@ -28,6 +29,7 @@ const navigation = [
   { name: 'Simulador', href: '/dashboard/simulations', icon: Search },
   { name: 'Parametros', href: '/dashboard/parameters', icon: Sliders },
   { name: 'Cartera', href: '/dashboard/portfolio', icon: FolderKanban },
+  { name: 'Escenarios', href: '/dashboard/simulation-config', icon: FlaskConical },
   { name: 'Integración', href: '/dashboard/integrations', icon: KeyRound },
 ]
 

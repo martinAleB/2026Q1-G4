@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
-  DialogRoot, DialogTrigger, DialogContent, DialogHeader, DialogTitle,
+  DialogRoot, DialogContent, DialogHeader, DialogTitle,
   DialogDescription, DialogFooter, DialogClose,
 } from '@/components/ui/dialog'
 import {
@@ -40,7 +40,7 @@ const EMPTY_FORM = {
 }
 
 const FIELDS = [
-  { key: 'name',         label: 'Nombre del producto',           type: 'text',   placeholder: 'Ej: Préstamo Personal Plus', colSpan: 2 },
+  { key: 'name',         label: 'Nombre del Producto',           type: 'text',   placeholder: 'Ej: Préstamo Personal Plus', colSpan: 2 },
   { key: 'amount',       label: 'Monto (ARS)',                   type: 'number', placeholder: 'Ej: 500000' },
   { key: 'installments', label: 'Cuotas (meses)',                type: 'number', placeholder: 'Ej: 24' },
   { key: 'interest',     label: 'Tasa de interés anual (%)',     type: 'number', placeholder: 'Ej: 45' },
@@ -115,7 +115,7 @@ function ProductForm({ open, onOpenChange, initial, onSubmit, isSaving, submitEr
     <DialogRoot open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle className="text-lg font-bold">{isEdit ? 'Editar producto' : 'Agregar producto'}</DialogTitle>
+          <DialogTitle className="text-lg font-bold">{isEdit ? 'Editar Producto' : 'Agregar Producto'}</DialogTitle>
           <DialogDescription>
             {isEdit ? 'Modificá los parámetros del producto financiero.' : 'Completá los parámetros del nuevo producto financiero.'}
           </DialogDescription>
@@ -187,7 +187,7 @@ function ProductForm({ open, onOpenChange, initial, onSubmit, isSaving, submitEr
               <Button type="button" variant="outline" disabled={isSaving}>Cancelar</Button>
             </DialogClose>
             <Button type="submit" disabled={isSaving}>
-              {isSaving ? 'Guardando…' : isEdit ? 'Guardar cambios' : 'Crear producto'}
+              {isSaving ? 'Guardando…' : isEdit ? 'Guardar Cambios' : 'Crear Producto'}
             </Button>
           </DialogFooter>
         </form>
@@ -350,9 +350,9 @@ export default function ProductsPage() {
     : '—'
 
   const metrics = [
-    { title: 'Productos activos', value: products.length, description: 'Oferta vigente para recomendación', icon: Package },
-    { title: 'Tasa promedio', value: products.length ? `${avgInterest}%` : '—', description: 'Promedio ponderado de configuraciones', icon: Percent },
-    { title: 'Ticket promedio', value: avgAmount, description: 'Monto medio entre productos activos', icon: Wallet },
+    { title: 'Productos Activos', value: products.length, description: 'Oferta vigente para recomendación', icon: Package },
+    { title: 'Tasa Promedio', value: products.length ? `${avgInterest}%` : '—', description: 'Promedio ponderado de configuraciones', icon: Percent },
+    { title: 'Ticket Promedio', value: avgAmount, description: 'Monto medio entre productos activos', icon: Wallet },
   ]
 
   return (
@@ -360,12 +360,12 @@ export default function ProductsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="mb-1 text-3xl font-bold">Productos financieros</h1>
+          <h1 className="mb-1 text-3xl font-bold">Productos Financieros</h1>
           <p className="text-muted-foreground">Configurá la oferta crediticia de tu fintech.</p>
         </div>
         <Button onClick={openCreate}>
           <Plus className="size-4" />
-          Agregar producto
+          Agregar Producto
         </Button>
       </div>
 
@@ -396,7 +396,7 @@ export default function ProductsPage() {
           <p className="text-sm">Todavía no hay productos. Agregá uno para empezar.</p>
           <Button variant="outline" size="sm" onClick={openCreate}>
             <Plus className="size-4" />
-            Agregar producto
+            Agregar Producto
           </Button>
         </div>
       ) : (

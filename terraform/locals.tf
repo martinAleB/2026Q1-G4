@@ -25,6 +25,8 @@ locals {
     "b2b-authorizer"            = "${path.root}/../backend/b2b-authorizer"
     "b2b-evaluations"           = "${path.root}/../backend/b2b-evaluations"
     "api-credentials"           = "${path.root}/../backend/api-credentials"
+    "db-migrations"             = "${path.root}/../backend/db"
+    "simulate-config"           = "${path.root}/../backend/simulate-config"
   }
 
   lambda_configs = {
@@ -105,10 +107,9 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        SQS_QUEUE_URL            = aws_sqs_queue.main.url
-        DYNAMODB_TABLE_NAME      = module.dynamodb_simulations.dynamodb_table_id
-        DYNAMODB_USER_TABLE      = module.dynamodb_user.dynamodb_table_id
-        DYNAMODB_PORTFOLIO_TABLE = module.dynamodb_portfolio.dynamodb_table_id
+        SQS_QUEUE_URL       = aws_sqs_queue.main.url
+        DYNAMODB_TABLE_NAME = module.dynamodb_simulations.dynamodb_table_id
+        DYNAMODB_USER_TABLE = module.dynamodb_user.dynamodb_table_id
       }
     }
     "simulations-results" = {
@@ -133,6 +134,10 @@ locals {
         SQS_QUEUE_URL          = aws_sqs_queue.main.url
         MODEL_ARTIFACTS_BUCKET = aws_s3_bucket.model_artifacts.id
         MODEL_ARTIFACTS_PREFIX = "v1/"
+        DB_HOST                = aws_db_proxy.portfolio.endpoint
+        DB_PORT                = tostring(aws_db_instance.portfolio.port)
+        DB_NAME                = "portfolio"
+        DB_SECRET_ARN          = aws_secretsmanager_secret.db_credentials.arn
       }
     }
     "recommendations-get" = {
@@ -153,7 +158,10 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DYNAMODB_PORTFOLIO_TABLE = module.dynamodb_portfolio.dynamodb_table_id
+        DB_HOST       = aws_db_proxy.portfolio.endpoint
+        DB_PORT       = tostring(aws_db_instance.portfolio.port)
+        DB_NAME       = "portfolio"
+        DB_SECRET_ARN = aws_secretsmanager_secret.db_credentials.arn
       }
     }
     "portfolio-updater" = {
@@ -163,7 +171,36 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        DYNAMODB_PORTFOLIO_TABLE = module.dynamodb_portfolio.dynamodb_table_id
+        DB_HOST       = aws_db_proxy.portfolio.endpoint
+        DB_PORT       = tostring(aws_db_instance.portfolio.port)
+        DB_NAME       = "portfolio"
+        DB_SECRET_ARN = aws_secretsmanager_secret.db_credentials.arn
+      }
+    }
+    "db-migrations" = {
+      handler     = "index.handler"
+      runtime     = var.lambda_node_runtime
+      timeout     = 300
+      memory_size = 256
+      in_vpc      = true
+      env_vars = {
+        DB_HOST    = aws_db_instance.portfolio.address
+        DB_PORT    = tostring(aws_db_instance.portfolio.port)
+        DB_NAME    = aws_db_instance.portfolio.db_name
+        SECRET_ARN = aws_secretsmanager_secret.db_credentials.arn
+      }
+    }
+    "simulate-config" = {
+      handler     = "index.handler"
+      runtime     = var.lambda_node_runtime
+      timeout     = 30
+      memory_size = 256
+      in_vpc      = true
+      env_vars = {
+        DB_HOST       = aws_db_proxy.portfolio.endpoint
+        DB_PORT       = tostring(aws_db_instance.portfolio.port)
+        DB_NAME       = "portfolio"
+        DB_SECRET_ARN = aws_secretsmanager_secret.db_credentials.arn
       }
     }
     "b2b-authorizer" = {
@@ -183,10 +220,9 @@ locals {
       memory_size = 256
       in_vpc      = true
       env_vars = {
-        SQS_QUEUE_URL            = aws_sqs_queue.main.url
-        DYNAMODB_TABLE_NAME      = module.dynamodb_simulations.dynamodb_table_id
-        DYNAMODB_USER_TABLE      = module.dynamodb_user.dynamodb_table_id
-        DYNAMODB_PORTFOLIO_TABLE = module.dynamodb_portfolio.dynamodb_table_id
+        SQS_QUEUE_URL       = aws_sqs_queue.main.url
+        DYNAMODB_TABLE_NAME = module.dynamodb_simulations.dynamodb_table_id
+        DYNAMODB_USER_TABLE = module.dynamodb_user.dynamodb_table_id
       }
     }
     "api-credentials" = {
@@ -251,6 +287,9 @@ locals {
     "api-credentials" = [
       { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" }
     ]
+    "simulate-config" = [
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" }
+    ]
   }
 
   lambda_async_dlq_arns = {
@@ -273,12 +312,13 @@ locals {
     "portfolio-updater"   = aws_lambda_function.lambdas["portfolio-updater"].invoke_arn
     "b2b-evaluations"     = aws_lambda_function.lambdas["b2b-evaluations"].invoke_arn
     "api-credentials"     = aws_lambda_function.lambdas["api-credentials"].invoke_arn
+    "simulate-config"     = aws_lambda_function.lambdas["simulate-config"].invoke_arn
   }
 
   api_routes = {
     "callback"            = { route_key = "GET /callback", integration = "auth-callback", auth_type = "NONE" }
     "fintech-get"         = { route_key = "GET /fintech", integration = "fintech-get", auth_type = "JWT" }
-    "fintech-put"         = { route_key = "PUT /fintech", integration = "fintech-update", auth_type = "JWT" }
+    "fintech-patch"       = { route_key = "PATCH /fintech", integration = "fintech-update", auth_type = "JWT" }
     "product-get"         = { route_key = "GET /product", integration = "product-get", auth_type = "JWT" }
     "product-post"        = { route_key = "POST /product", integration = "product-create", auth_type = "JWT" }
     "product-put"         = { route_key = "PUT /product/{id}", integration = "product-update", auth_type = "JWT" }
@@ -288,6 +328,7 @@ locals {
     "recommendations-get" = { route_key = "GET /recommendations", integration = "recommendations-get", auth_type = "JWT" }
     "portfolio-get"       = { route_key = "GET /portfolio", integration = "portfolio-get", auth_type = "JWT" }
     "portfolio-refresh"   = { route_key = "POST /portfolio/refresh", integration = "portfolio-updater", auth_type = "JWT" }
+    "simulate-config-get" = { route_key = "GET /simulations/simulate-config", integration = "simulate-config", auth_type = "JWT" }
     "v1-evaluations-post" = { route_key = "POST /v1/evaluations", integration = "b2b-evaluations", auth_type = "CUSTOM" }
     "v1-evaluations-get"  = { route_key = "GET /v1/evaluations", integration = "b2b-evaluations", auth_type = "CUSTOM" }
     "api-credentials-get"  = { route_key = "GET /integrations/credentials",  integration = "api-credentials", auth_type = "JWT" }

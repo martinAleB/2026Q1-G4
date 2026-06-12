@@ -1,5 +1,6 @@
 import json
 import os
+import ssl
 import time
 import urllib.request
 import urllib.error
@@ -8,6 +9,7 @@ from pathlib import Path
 import datetime
 import boto3
 import numpy as np
+import pg8000.native
 
 # Importar LiteRT (antes tflite-runtime) para Python 3.12+
 try:
@@ -28,11 +30,19 @@ _FILL_VALUES = None
 dynamodb = boto3.client('dynamodb')
 sqs = boto3.client('sqs')
 s3 = boto3.client('s3')
+secretsmanager = boto3.client('secretsmanager')
 DYNAMODB_TABLE         = os.environ.get('DYNAMODB_TABLE_NAME')
 DYNAMODB_FINTECH_TABLE = os.environ.get('DYNAMODB_FINTECH_TABLE')
 SQS_QUEUE_URL          = os.environ.get('SQS_QUEUE_URL')
 MODEL_ARTIFACTS_BUCKET = os.environ.get('MODEL_ARTIFACTS_BUCKET')
 MODEL_ARTIFACTS_PREFIX = os.environ.get('MODEL_ARTIFACTS_PREFIX', 'v1/')
+DB_HOST                = os.environ.get('DB_HOST')
+DB_PORT                = int(os.environ.get('DB_PORT', '5432'))
+DB_NAME                = os.environ.get('DB_NAME')
+DB_SECRET_ARN          = os.environ.get('DB_SECRET_ARN')
+_db_credentials        = json.loads(secretsmanager.get_secret_value(SecretId=DB_SECRET_ARN)['SecretString'])
+DB_USER                = _db_credentials['username']
+DB_PASSWORD            = _db_credentials['password']
 
 
 def _required_env(name: str) -> str:
@@ -383,6 +393,126 @@ def predecir_score(features_dict: dict) -> float:
     
     return float(preds[0][0])
 
+def persist_features_to_rds(cuit: str, features: dict, score: float):
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
+    conn = pg8000.native.Connection(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        ssl_context=ssl_ctx,
+    )
+    try:
+        conn.run(
+            """
+            INSERT INTO portfolio_cuits (
+                cuit, current_status, previous_status, trend, situacion, cant_entidades, deuda_total_ars,
+                meses_en_sit1, dias_atraso_max, proceso_judicial, score, features_updated_at, last_updated
+            ) VALUES (
+                :cuit, :sit, :sit, 'stable', :sit, :cant, :deuda, :meses, :dias, :proceso, :score, NOW(), NOW()
+            )
+            ON CONFLICT (cuit) DO UPDATE SET
+                previous_status      = CASE 
+                                            WHEN portfolio_cuits.current_status = 0 THEN EXCLUDED.current_status 
+                                            ELSE portfolio_cuits.current_status 
+                                       END,
+                current_status       = EXCLUDED.current_status,
+                trend                = CASE
+                                            WHEN portfolio_cuits.current_status = 0 OR portfolio_cuits.current_status = EXCLUDED.current_status THEN 'stable'
+                                            WHEN EXCLUDED.current_status > portfolio_cuits.current_status THEN 'down'
+                                            ELSE 'up'
+                                       END,
+                situacion            = EXCLUDED.situacion,
+                cant_entidades       = EXCLUDED.cant_entidades,
+                deuda_total_ars      = EXCLUDED.deuda_total_ars,
+                meses_en_sit1        = EXCLUDED.meses_en_sit1,
+                dias_atraso_max      = EXCLUDED.dias_atraso_max,
+                proceso_judicial     = EXCLUDED.proceso_judicial,
+                score                = EXCLUDED.score,
+                features_updated_at  = EXCLUDED.features_updated_at,
+                last_updated         = NOW()
+            """,
+            cuit=cuit,
+            sit=int(features.get('situacion', 0)),
+            cant=int(features.get('cant_entidades', 0)),
+            deuda=float(features.get('prestamos_total', 0)) * 1000,
+            meses=int(features.get('meses_en_sit1', 0)),
+            dias=int(features.get('dias_atraso_max', 0)),
+            proceso=bool(int(features.get('proceso_judicial', 0))),
+            score=score,
+        )
+    finally:
+        conn.close()
+
+
+def persist_no_data_to_rds(cuit: str):
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
+    conn = pg8000.native.Connection(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        ssl_context=ssl_ctx,
+    )
+    try:
+        conn.run(
+            """
+            INSERT INTO portfolio_cuits (
+                cuit, current_status, previous_status, trend, situacion, last_updated
+            ) VALUES (
+                :cuit, 0, 0, 'stable', 0, NOW()
+            )
+            ON CONFLICT (cuit) DO UPDATE SET
+                current_status       = 0,
+                situacion            = 0,
+                last_updated         = NOW()
+            """,
+            cuit=cuit,
+        )
+    finally:
+        conn.close()
+
+
+def persist_tracking_to_rds(cuit: str, sub: str):
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
+    conn = pg8000.native.Connection(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        ssl_context=ssl_ctx,
+    )
+    try:
+        conn.run(
+            """
+            INSERT INTO portfolio_cuits (cuit, current_status, previous_status, trend, situacion, last_updated)
+            VALUES (:cuit, 0, 0, 'stable', 0, NOW())
+            ON CONFLICT (cuit) DO NOTHING
+            """,
+            cuit=cuit,
+        )
+        conn.run(
+            """
+            INSERT INTO portfolio_tracking (fintech_sub, cuit, tracked_at)
+            VALUES (:sub, :cuit, NOW())
+            ON CONFLICT (fintech_sub, cuit) DO NOTHING
+            """,
+            sub=sub,
+            cuit=cuit,
+        )
+    finally:
+        conn.close()
+
+
 def lambda_handler(event, context):
     for record in event.get('Records', []):
         task_id = None
@@ -403,27 +533,38 @@ def lambda_handler(event, context):
 
             print(f"Procesando Task: {task_id} - CUIT: {cuit} - Sub: {sub} - Intento: {attempt}")
 
+            try:
+                persist_tracking_to_rds(cuit, sub)
+            except Exception as tracking_err:
+                print(f"Error registrando tracking RDS para {cuit}/{sub}: {str(tracking_err)}")
+
             bcra_data = consultar_bcra(cuit)
 
             features = features_desde_api(bcra_data)
             if features is None:
                 raise NoRetryError("No hay suficientes periodos en BCRA (min 7).")
 
+            score = predecir_score(features)
+            print(f"Score calculado: {score}")
+
+            persist_features_to_rds(cuit, features, score)
+
             fintech_params = get_fintech_params(sub)
             rejection_reasons = apply_filter(features, fintech_params)
             if rejection_reasons:
                 print(f"Cliente rechazado por política de fintech: {rejection_reasons}")
-                update_simulation_status(sub, cuit, task_id, "REJECTED", rejection_reasons=rejection_reasons)
+                update_simulation_status(sub, cuit, task_id, "REJECTED", score=score, rejection_reasons=rejection_reasons)
                 continue
-
-            score = predecir_score(features)
-            print(f"Score calculado: {score}")
 
             update_simulation_status(sub, cuit, task_id, "COMPLETED", score=score)
 
         except NoRetryError as e:
             print(f"Sin datos para {task_id}: {str(e)}")
             if task_id and sub and cuit:
+                try:
+                    persist_no_data_to_rds(cuit)
+                except Exception as db_err:
+                    print(f"Error persisting no_data to RDS for {cuit}: {str(db_err)}")
                 update_simulation_status(sub, cuit, task_id, "NO_DATA", error=str(e))
 
         except Exception as e:

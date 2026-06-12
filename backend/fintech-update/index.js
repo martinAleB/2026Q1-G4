@@ -1,10 +1,19 @@
 'use strict';
 
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const TABLE = process.env.DYNAMODB_FINTECH_TABLE;
+
+const DEFAULT_FINTECH_ROW = {
+  max_situacion_crediticia: 2,
+  max_entidades_con_deuda: 3,
+  max_deuda_total_ars: 350000,
+  min_meses_situacion_1: 6,
+  max_dias_atraso: 30,
+  permite_proceso_judicial: false,
+};
 
 function respond(statusCode, body) {
   return { statusCode, body: JSON.stringify(body) };
@@ -63,27 +72,53 @@ exports.handler = async (event) => {
       return respond(400, { error: 'No se enviaron campos válidos para actualizar' });
     }
 
-    const setParts = [];
-    const names = {};
-    const values = {};
-    Object.entries(updates).forEach(([key, val], i) => {
-      const n = `#k${i}`;
-      const v = `:v${i}`;
-      setParts.push(`${n} = ${v}`);
-      names[n] = key;
-      values[v] = val;
-    });
-
-    const { Attributes } = await ddb.send(new UpdateCommand({
+    // Check if the item already exists in DynamoDB
+    const { Item } = await ddb.send(new GetCommand({
       TableName: TABLE,
       Key: { sub },
-      UpdateExpression: `SET ${setParts.join(', ')}`,
-      ExpressionAttributeNames: names,
-      ExpressionAttributeValues: values,
-      ReturnValues: 'ALL_NEW',
     }));
 
-    return respond(200, Attributes);
+    let resultAttributes;
+
+    if (!Item) {
+      const email = event.requestContext?.authorizer?.jwt?.claims?.email;
+      const newItem = {
+        sub,
+        ...(email ? { email } : {}),
+        ...DEFAULT_FINTECH_ROW,
+        ...updates
+      };
+      await ddb.send(new PutCommand({
+        TableName: TABLE,
+        Item: newItem,
+      }));
+      resultAttributes = newItem;
+      console.log(`Created new fintech row with defaults for sub=${sub}`);
+    } else {
+      const setParts = [];
+      const names = {};
+      const values = {};
+      Object.entries(updates).forEach(([key, val], i) => {
+        const n = `#k${i}`;
+        const v = `:v${i}`;
+        setParts.push(`${n} = ${v}`);
+        names[n] = key;
+        values[v] = val;
+      });
+
+      const { Attributes } = await ddb.send(new UpdateCommand({
+        TableName: TABLE,
+        Key: { sub },
+        UpdateExpression: `SET ${setParts.join(', ')}`,
+        ExpressionAttributeNames: names,
+        ExpressionAttributeValues: values,
+        ReturnValues: 'ALL_NEW',
+      }));
+      resultAttributes = Attributes;
+      console.log(`Updated existing fintech row for sub=${sub}`);
+    }
+
+    return respond(200, resultAttributes);
   } catch (error) {
     console.error('Error:', error);
     return respond(500, { error: 'Error interno del servidor', message: error.message });

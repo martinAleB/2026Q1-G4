@@ -7,9 +7,14 @@ resource "aws_apigatewayv2_api" "main" {
       ["http://${aws_s3_bucket_website_configuration.frontend.website_endpoint}"],
       var.cors_additional_origins,
     )
-    allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"]
     allow_headers = ["Content-Type", "Authorization"]
   }
+}
+
+resource "aws_cloudwatch_log_group" "api_access_logs" {
+  name              = "/aws/apigateway/${var.stack_name}-api"
+  retention_in_days = var.lambda_log_retention_days
 }
 
 resource "aws_apigatewayv2_stage" "main" {
@@ -20,6 +25,21 @@ resource "aws_apigatewayv2_stage" "main" {
   default_route_settings {
     throttling_rate_limit  = var.api_throttling_rate_limit
     throttling_burst_limit = var.api_throttling_burst_limit
+  }
+
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_access_logs.arn
+    format = jsonencode({
+      requestId        = "$context.requestId"
+      ip               = "$context.identity.sourceIp"
+      requestTime      = "$context.requestTime"
+      httpMethod       = "$context.httpMethod"
+      routeKey         = "$context.routeKey"
+      status           = "$context.status"
+      protocol         = "$context.protocol"
+      responseLength   = "$context.responseLength"
+      integrationError = "$context.integrationErrorMessage"
+    })
   }
 }
 

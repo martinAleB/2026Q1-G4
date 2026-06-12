@@ -1,125 +1,122 @@
-const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
-const { DynamoDBDocumentClient, QueryCommand, BatchGetCommand, GetCommand } = require("@aws-sdk/lib-dynamodb");
+const { Pool } = require('pg');
+const { SecretsManagerClient, GetSecretValueCommand } = require('@aws-sdk/client-secrets-manager');
 
-const client = new DynamoDBClient({});
-const docClient = DynamoDBDocumentClient.from(client);
+const smClient = new SecretsManagerClient({ region: 'us-east-1' });
+let poolPromise;
 
-const TABLE_NAME = process.env.DYNAMODB_PORTFOLIO_TABLE;
+function getPool() {
+    if (!poolPromise) {
+        poolPromise = (async () => {
+            const { SecretString } = await smClient.send(
+                new GetSecretValueCommand({ SecretId: process.env.DB_SECRET_ARN })
+            );
+            const { username, password } = JSON.parse(SecretString);
+            return new Pool({
+                host: process.env.DB_HOST,
+                port: parseInt(process.env.DB_PORT, 10),
+                database: process.env.DB_NAME,
+                user: username,
+                password,
+                ssl: { rejectUnauthorized: false },
+            });
+        })().catch((err) => {
+            poolPromise = undefined;
+            throw err;
+        });
+    }
+    return poolPromise;
+}
 
-// Headers CORS los inyecta API Gateway (cors_configuration en api-gateway.tf);
-// si los devolvemos desde el Lambda pisan la config del gateway.
-const headers = { "Content-Type": "application/json" };
+const headers = { 'Content-Type': 'application/json' };
 
 exports.handler = async (event) => {
     try {
         const sub = event.requestContext?.authorizer?.jwt?.claims?.sub;
         if (!sub) {
-            return { statusCode: 401, headers, body: JSON.stringify({ error: "Unauthorized" }) };
+            return { statusCode: 401, headers, body: JSON.stringify({ error: 'Unauthorized' }) };
         }
 
         const queryParams = event.queryStringParameters || {};
-        const limit = parseInt(queryParams.limit) || 20;
-        const nextToken = queryParams.next_token;
+        const limit = Math.min(parseInt(queryParams.limit) || 20, 100);
+        const offset = parseInt(queryParams.offset) || 0;
         const searchCuit = queryParams.cuit;
 
-        let trackedItems = [];
-        let lastEvaluatedKey = null;
+        const client = await (await getPool()).connect();
+        try {
+            // Verificar si las tablas existen antes de consultar
+            const tableCheck = await client.query(`
+                SELECT (
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'portfolio_tracking'
+                    )
+                ) AND (
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'portfolio_cuits'
+                    )
+                ) AS exists
+            `);
+            const tablesExist = tableCheck.rows[0].exists;
 
-        // Single-cuit lookup uses the composite key (CUIT, FINTECH#<sub>) so a
-        // fintech can only retrieve cuits it has previously tracked — there is
-        // no way to probe another fintech's portfolio with this query shape.
-        if (searchCuit) {
-            const { Item } = await docClient.send(new GetCommand({
-                TableName: TABLE_NAME,
-                Key: {
-                    pk: `CUIT#${searchCuit}`,
-                    sk: `FINTECH#${sub}`
-                }
-            }));
-
-            if (!Item) {
-                // No relation row means either the cuit isn't tracked by this
-                // fintech or it doesn't exist at all — same response either way.
-                return { statusCode: 200, headers, body: JSON.stringify({ items: [], next_token: null }) };
-            }
-            trackedItems = [Item];
-        } else {
-            const queryOptions = {
-                TableName: TABLE_NAME,
-                IndexName: 'gsi1',
-                KeyConditionExpression: 'gsi1_pk = :fintech_id',
-                ExpressionAttributeValues: {
-                    ':fintech_id': `FINTECH#${sub}`
-                },
-                Limit: limit
-            };
-
-            if (nextToken) {
-                try {
-                    queryOptions.ExclusiveStartKey = JSON.parse(Buffer.from(nextToken, 'base64').toString());
-                } catch (e) {
-                    console.error("Invalid token format");
-                }
+            if (!tablesExist) {
+                return {
+                    statusCode: 200,
+                    headers,
+                    body: JSON.stringify({ items: [], total: 0, limit, offset }),
+                };
             }
 
-            const result = await docClient.send(new QueryCommand(queryOptions));
-            trackedItems = result.Items || [];
-            lastEvaluatedKey = result.LastEvaluatedKey ? Buffer.from(JSON.stringify(result.LastEvaluatedKey)).toString('base64') : null;
-        }
+            if (searchCuit) {
+                const { rows } = await client.query(
+                    `SELECT c.cuit, c.current_status, c.previous_status, c.trend,
+                            c.last_updated, t.tracked_at
+                     FROM portfolio_tracking t
+                     JOIN portfolio_cuits c ON t.cuit = c.cuit
+                     WHERE t.fintech_sub = $1 AND t.cuit = $2`,
+                    [sub, searchCuit]
+                );
 
-        if (trackedItems.length === 0) {
-            return { statusCode: 200, headers, body: JSON.stringify({ items: [], next_token: null }) };
-        }
-
-        // GSI rows store the original PK in `gsi1_sk` (the relation row uses
-        // FINTECH#<sub>/CUIT#<cuit> on the GSI, inverted from the main table).
-        // For the single-cuit lookup path, the item already has `pk`.
-        const cuitPks = trackedItems.map(item => item.gsi1_sk || item.pk);
-
-        const keys = cuitPks.map(pk => ({
-            pk: pk,
-            sk: 'INFO'
-        }));
-
-        const { Responses } = await docClient.send(new BatchGetCommand({
-            RequestItems: {
-                [TABLE_NAME]: {
-                    Keys: keys
-                }
+                return {
+                    statusCode: 200,
+                    headers,
+                    body: JSON.stringify({ items: rows, total: rows.length }),
+                };
             }
-        }));
-        
-        const infoItems = Responses[TABLE_NAME] || [];
 
-        const finalItems = trackedItems.map(trackItem => {
-            const pk = trackItem.gsi1_sk || trackItem.pk;
-            const infoItem = infoItems.find(info => info.pk === pk);
-            
+            const countResult = await client.query(
+                'SELECT COUNT(*) FROM portfolio_tracking WHERE fintech_sub = $1',
+                [sub]
+            );
+            const total = parseInt(countResult.rows[0].count, 10);
+
+            const { rows } = await client.query(
+                `SELECT c.cuit, c.current_status, c.previous_status, c.trend,
+                        c.last_updated, t.tracked_at
+                 FROM portfolio_tracking t
+                 JOIN portfolio_cuits c ON t.cuit = c.cuit
+                 WHERE t.fintech_sub = $1
+                 ORDER BY t.tracked_at DESC
+                 LIMIT $2 OFFSET $3`,
+                [sub, limit, offset]
+            );
+
             return {
-                cuit: pk.split('#')[1],
-                current_status: infoItem?.current_status || "1",
-                previous_status: infoItem?.previous_status || "1",
-                trend: infoItem?.trend || "stable",
-                last_updated: infoItem?.last_updated || trackItem.tracked_at,
-                tracked_at: trackItem.tracked_at
+                statusCode: 200,
+                headers,
+                body: JSON.stringify({ items: rows, total, limit, offset }),
             };
-        });
-
-        return {
-            statusCode: 200,
-            headers,
-            body: JSON.stringify({
-                items: finalItems,
-                next_token: lastEvaluatedKey
-            })
-        };
-
+        } finally {
+            client.release();
+        }
     } catch (error) {
-        console.error("Error in portfolio-get:", error);
+        console.error('Error in portfolio-get:', error);
         return {
             statusCode: 500,
             headers,
-            body: JSON.stringify({ error: "Internal Server Error", message: error.message })
+            body: JSON.stringify({ error: 'Internal Server Error', message: error.message }),
         };
     }
 };

@@ -34,3 +34,13 @@ output "b2b_api_endpoint" {
   description = "Base URL de la API B2B (rutas /v1/*)"
   value       = "${aws_apigatewayv2_api.main.api_endpoint}/v1"
 }
+
+output "rds_endpoint" {
+  description = "RDS PostgreSQL endpoint used by Lambdas via DB_HOST environment variable"
+  value       = aws_db_instance.portfolio.address
+}
+
+output "rds_secret_arn" {
+  description = "ARN of the Secrets Manager secret containing RDS credentials"
+  value       = aws_secretsmanager_secret.db_credentials.arn
+}

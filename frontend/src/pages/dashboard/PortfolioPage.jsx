@@ -242,11 +242,19 @@ export default function PortfolioPage() {
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                           <div>
                             <p className="text-xs text-muted-foreground">Situación anterior</p>
-                            <p className="font-medium">{client.previous_status || '—'}</p>
+                            <p className="font-medium">
+                              {!client.previous_status || client.previous_status === 0
+                                ? '—'
+                                : client.previous_status}
+                            </p>
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground">Situación actual</p>
-                            <p className="font-medium">{client.current_status}</p>
+                            <p className="font-medium">
+                              {!client.current_status || client.current_status === 0
+                                ? 'Sin datos'
+                                : client.current_status}
+                            </p>
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground">Monitoreado desde</p>

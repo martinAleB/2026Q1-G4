@@ -9,7 +9,6 @@ const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const QUEUE_URL         = process.env.SQS_QUEUE_URL;
 const SIMULATIONS_TABLE = process.env.DYNAMODB_TABLE_NAME;
 const USER_TABLE        = process.env.DYNAMODB_USER_TABLE;
-const PORTFOLIO_TABLE   = process.env.DYNAMODB_PORTFOLIO_TABLE;
 
 const HEADERS = { 'Content-Type': 'application/json' };
 
@@ -32,7 +31,6 @@ async function handlePost(fintechSub, rawBody) {
     sub: fintechSub, cuit,
     simulationsTable: SIMULATIONS_TABLE,
     userTable: USER_TABLE,
-    portfolioTable: PORTFOLIO_TABLE,
     sqsQueueUrl: QUEUE_URL,
   });
 

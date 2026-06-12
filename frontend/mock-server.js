@@ -114,11 +114,59 @@ createServer(async (req, res) => {
 
   // GET /integrations/credentials
   if (req.method === 'GET' && path === '/integrations/credentials') {
+    send(res, 200, { exists: true, api_key_id: 'a1b2c3d4', created_at: new Date(Date.now() - 86_400_000).toISOString() })
+    return
+  }
+
+  // POST /integrations/credentials
+  if (req.method === 'POST' && path === '/integrations/credentials') {
+    const api_key_id = 'a1b2c3d4'
+    const api_key = `presti_live_${api_key_id}mock32charssecret000000000000`
+    send(res, 200, { api_key_id, api_key })
+    return
+  }
+
+  // GET /simulations/simulate-config
+  if (req.method === 'GET' && path === '/simulations/simulate-config') {
+    const total_portfolio = 150
+    const sim_sit = url.searchParams.get('sim_sit') ? parseInt(url.searchParams.get('sim_sit'), 10) : 2
+    const sim_deuda = url.searchParams.get('sim_deuda') ? parseInt(url.searchParams.get('sim_deuda'), 10) : 350000
+
+    let simulated_approved_count = 110
+    if (sim_sit < 2) simulated_approved_count -= 30
+    if (sim_deuda < 200000) simulated_approved_count -= 40
+    if (sim_deuda > 1000000) simulated_approved_count += 20
+
+    const current_approved_count = 95
+
+    const newly_eligible = Math.max(0, simulated_approved_count - current_approved_count)
+    const newly_rejected = Math.max(0, current_approved_count - simulated_approved_count)
+
     send(res, 200, {
-      client_id: 'mock-client-id-1234567890',
-      client_secret: 'mock-client-secret-abcdef1234567890',
-      client_name: 'Mock Fintech App',
-      created_at: new Date(Date.now() - 86_400_000).toISOString(),
+      empty: false,
+      total_portfolio,
+      current_approved_count,
+      simulated_approved_count,
+      newly_eligible,
+      newly_rejected,
+      reject_by_situacion: Math.round((total_portfolio - simulated_approved_count) * 0.3),
+      reject_by_entidades: Math.round((total_portfolio - simulated_approved_count) * 0.2),
+      reject_by_deuda: Math.round((total_portfolio - simulated_approved_count) * 0.25),
+      reject_by_meses: Math.round((total_portfolio - simulated_approved_count) * 0.1),
+      reject_by_dias: Math.round((total_portfolio - simulated_approved_count) * 0.1),
+      reject_by_judicial: Math.round((total_portfolio - simulated_approved_count) * 0.05),
+      current_avg_score: 0.625,
+      simulated_avg_score: 0.655,
+      current_eligible_debt: 12500000,
+      simulated_eligible_debt: 14800000,
+      avg_entidades: 2.4,
+      avg_deuda: 280000,
+      avg_meses_sit1: 14,
+      count_judicial: 5,
+      median_score: 0.58,
+      high_score_count: 45,
+      mid_score_count: 75,
+      low_score_count: 30,
     })
     return
   }

@@ -2,10 +2,9 @@
 
 const { enqueueEvaluation } = require('./shared/enqueue');
 
-const QUEUE_URL        = process.env.SQS_QUEUE_URL;
+const QUEUE_URL         = process.env.SQS_QUEUE_URL;
 const SIMULATIONS_TABLE = process.env.DYNAMODB_TABLE_NAME;
-const USER_TABLE       = process.env.DYNAMODB_USER_TABLE;
-const PORTFOLIO_TABLE  = process.env.DYNAMODB_PORTFOLIO_TABLE;
+const USER_TABLE        = process.env.DYNAMODB_USER_TABLE;
 
 const headers = { 'Content-Type': 'application/json' };
 
@@ -38,7 +37,7 @@ exports.handler = async (event) => {
       return { statusCode: 401, headers, body: JSON.stringify({ error: 'No se pudo obtener el sub del token' }) };
     }
 
-    if (!SIMULATIONS_TABLE || !USER_TABLE || !PORTFOLIO_TABLE) {
+    if (!SIMULATIONS_TABLE || !USER_TABLE) {
       console.error('Required DynamoDB table env vars are not set');
       return { statusCode: 500, headers, body: JSON.stringify({ error: 'Configuración interna incompleta (DynamoDB)' }) };
     }
@@ -52,7 +51,6 @@ exports.handler = async (event) => {
       sub, cuit,
       simulationsTable: SIMULATIONS_TABLE,
       userTable: USER_TABLE,
-      portfolioTable: PORTFOLIO_TABLE,
       sqsQueueUrl: QUEUE_URL,
     });
 
