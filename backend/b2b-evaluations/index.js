@@ -37,7 +37,33 @@ async function handlePost(fintechSub, rawBody) {
   return respond(202, { task_id: taskId, cuit, status });
 }
 
-async function handleGet(fintechSub) {
+function formatEvaluation({ cuit, status, score, created_at, rejection_reasons, error_message }) {
+  return {
+    cuit, status,
+    score: score !== undefined && score !== null ? Number(score) : null,
+    created_at,
+    rejection_reasons: rejection_reasons ?? [],
+    error_message: error_message ?? null,
+  };
+}
+
+async function handleGet(fintechSub, taskId) {
+  if (taskId) {
+    const result = await ddb.send(new QueryCommand({
+      TableName: SIMULATIONS_TABLE,
+      IndexName: 'task-id-sub-index',
+      KeyConditionExpression: 'task_id = :tid AND #sub = :sub',
+      ExpressionAttributeNames: { '#sub': 'sub' },
+      ExpressionAttributeValues: { ':tid': taskId, ':sub': fintechSub },
+    }));
+
+    if (!result.Items || result.Items.length === 0) {
+      return respond(404, { error: 'Evaluación no encontrada' });
+    }
+
+    return respond(200, { evaluation: formatEvaluation(result.Items[0]) });
+  }
+
   const result = await ddb.send(new QueryCommand({
     TableName: SIMULATIONS_TABLE,
     KeyConditionExpression: '#sub = :sub',
@@ -52,15 +78,7 @@ async function handleGet(fintechSub) {
     }
   }
 
-  const evaluations = Object.values(byCuit).map(({ cuit, status, score, created_at, rejection_reasons, error_message }) => ({
-    cuit, status,
-    score: score !== undefined && score !== null ? Number(score) : null,
-    created_at,
-    rejection_reasons: rejection_reasons ?? [],
-    error_message: error_message ?? null,
-  }));
-
-  return respond(200, { evaluations });
+  return respond(200, { evaluations: Object.values(byCuit).map(formatEvaluation) });
 }
 
 exports.handler = async (event) => {
@@ -70,7 +88,7 @@ exports.handler = async (event) => {
 
     const method = event.requestContext?.http?.method;
     if (method === 'POST') return handlePost(fintechSub, event.body);
-    if (method === 'GET')  return handleGet(fintechSub);
+    if (method === 'GET')  return handleGet(fintechSub, event.queryStringParameters?.task_id);
 
     return respond(405, { error: 'Método no permitido' });
   } catch (err) {

@@ -34,11 +34,6 @@ variable "api_throttling_burst_limit" {
   default     = 50
 }
 
-variable "bucket_name" {
-  description = "S3 bucket name for the static frontend (must be globally unique)"
-  type        = string
-}
-
 variable "environment" {
   description = "Environment identifier used in the default_tags propagated to every resource (e.g. lab, dev, prod)"
   type        = string
