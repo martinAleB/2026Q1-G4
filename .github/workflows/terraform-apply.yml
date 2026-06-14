@@ -74,3 +74,7 @@ jobs:
         run: terraform apply tfplan
         working-directory: terraform
 
+      - name: Run DB Migrations
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fixes'
+        run: bash scripts/migrate.sh up
+
