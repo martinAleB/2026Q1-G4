@@ -12,7 +12,7 @@ fi
 : "${TF_VAR_stack_name:=${STACK_NAME}}"
 : "${TF_STATE_BUCKET:=${STACK_NAME}-state-bucket}"
 : "${TF_LOCK_TABLE:=${STACK_NAME}-lock-table}"
-: "${TF_FRONTEND_BUCKET_NAME:=${STACK_NAME}-frontend-bucket}"
+: "${TF_FRONTEND_BUCKET_NAME:=${STACK_NAME}-frontend}"
 : "${TF_VAR_bucket_name:=${TF_FRONTEND_BUCKET_NAME}}"
 
 export TF_VAR_aws_region AWS_DEFAULT_REGION

@@ -27,10 +27,10 @@ jobs:
       AWS_DEFAULT_REGION: us-east-1
       STACK_NAME: ${{ vars.STACK_NAME }}
       TF_VAR_stack_name: ${{ vars.STACK_NAME }}
-      TF_VAR_bucket_name: ${{ vars.STACK_NAME }}-frontend-bucket
+      TF_VAR_bucket_name: ${{ vars.STACK_NAME }}-frontend
       TF_STATE_BUCKET: ${{ vars.STACK_NAME }}-state-bucket
       TF_LOCK_TABLE: ${{ vars.STACK_NAME }}-lock-table
-      TF_FRONTEND_BUCKET_NAME: ${{ vars.STACK_NAME }}-frontend-bucket
+      TF_FRONTEND_BUCKET_NAME: ${{ vars.STACK_NAME }}-frontend
 
     steps:
       - name: Checkout
