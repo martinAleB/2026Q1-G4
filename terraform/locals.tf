@@ -23,7 +23,8 @@ locals {
     "portfolio-get"             = "${path.root}/../backend/portfolio-get"
     "portfolio-updater"         = "${path.root}/../backend/portfolio-updater"
     "b2b-authorizer"            = "${path.root}/../backend/b2b-authorizer"
-    "b2b-evaluations"           = "${path.root}/../backend/b2b-evaluations"
+    "b2b-evaluations-post"      = "${path.root}/../backend/b2b-evaluations-post"
+    "b2b-evaluations-get"       = "${path.root}/../backend/b2b-evaluations-get"
     "api-credentials"           = "${path.root}/../backend/api-credentials"
     "db-migrations"             = "${path.root}/../backend/db"
     "simulate-config"           = "${path.root}/../backend/simulate-config"
@@ -213,7 +214,7 @@ locals {
         DYNAMODB_API_CLIENTS_TABLE = module.dynamodb_api_clients.dynamodb_table_id
       }
     }
-    "b2b-evaluations" = {
+    "b2b-evaluations-post" = {
       handler     = "index.handler"
       runtime     = var.lambda_node_runtime
       timeout     = 30
@@ -223,6 +224,17 @@ locals {
         SQS_QUEUE_URL       = aws_sqs_queue.main.url
         DYNAMODB_TABLE_NAME = module.dynamodb_simulations.dynamodb_table_id
         DYNAMODB_USER_TABLE = module.dynamodb_user.dynamodb_table_id
+      }
+    }
+    "b2b-evaluations-get" = {
+      handler     = "index.handler"
+      runtime     = var.lambda_node_runtime
+      timeout     = 30
+      memory_size = 256
+      in_vpc      = true
+      env_vars = {
+        DYNAMODB_TABLE_NAME    = module.dynamodb_simulations.dynamodb_table_id
+        DYNAMODB_PRODUCT_TABLE = module.dynamodb_product.dynamodb_table_id
       }
     }
     "api-credentials" = {
@@ -281,7 +293,10 @@ locals {
     "b2b-authorizer" = [
       { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" }
     ]
-    "b2b-evaluations" = [
+    "b2b-evaluations-post" = [
+      { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" }
+    ]
+    "b2b-evaluations-get" = [
       { principal = "apigateway.amazonaws.com", source_arn = "${aws_apigatewayv2_api.main.execution_arn}/*/*" }
     ]
     "api-credentials" = [
@@ -310,7 +325,8 @@ locals {
     "recommendations-get" = aws_lambda_function.lambdas["recommendations-get"].invoke_arn
     "portfolio-get"       = aws_lambda_function.lambdas["portfolio-get"].invoke_arn
     "portfolio-updater"   = aws_lambda_function.lambdas["portfolio-updater"].invoke_arn
-    "b2b-evaluations"     = aws_lambda_function.lambdas["b2b-evaluations"].invoke_arn
+    "b2b-evaluations-post" = aws_lambda_function.lambdas["b2b-evaluations-post"].invoke_arn
+    "b2b-evaluations-get" = aws_lambda_function.lambdas["b2b-evaluations-get"].invoke_arn
     "api-credentials"     = aws_lambda_function.lambdas["api-credentials"].invoke_arn
     "simulate-config"     = aws_lambda_function.lambdas["simulate-config"].invoke_arn
   }
@@ -329,8 +345,8 @@ locals {
     "portfolio-get"       = { route_key = "GET /portfolio", integration = "portfolio-get", auth_type = "JWT" }
     "portfolio-refresh"   = { route_key = "POST /portfolio/refresh", integration = "portfolio-updater", auth_type = "JWT" }
     "simulate-config-get" = { route_key = "GET /simulations/simulate-config", integration = "simulate-config", auth_type = "JWT" }
-    "v1-evaluations-post" = { route_key = "POST /v1/evaluations", integration = "b2b-evaluations", auth_type = "CUSTOM" }
-    "v1-evaluations-get"  = { route_key = "GET /v1/evaluations", integration = "b2b-evaluations", auth_type = "CUSTOM" }
+    "v1-evaluations-post" = { route_key = "POST /v1/evaluations", integration = "b2b-evaluations-post", auth_type = "CUSTOM" }
+    "v1-evaluations-get"  = { route_key = "GET /v1/evaluations", integration = "b2b-evaluations-get", auth_type = "CUSTOM" }
     "api-credentials-get"  = { route_key = "GET /integrations/credentials",  integration = "api-credentials", auth_type = "JWT" }
     "api-credentials-post" = { route_key = "POST /integrations/credentials", integration = "api-credentials", auth_type = "JWT" }
   }

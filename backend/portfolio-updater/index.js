@@ -181,26 +181,22 @@ exports.handler = async (event) => {
 
             if (results === null) {
                 noData++;
-                await client.query(
-                    'UPDATE portfolio_cuits SET last_processed_period = $1, current_status = 0, situacion = 0 WHERE cuit = $2',
-                    [currentPeriod, item.cuit]
-                );
                 continue;
             }
 
             const newStatusNum = derivarSituacion(results);
             if (newStatusNum === null) {
-                console.log(`CUIT ${item.cuit}: no se pudo derivar situación del BCRA, setting current_status to 0.`);
+                console.log(`CUIT ${item.cuit}: no se pudo derivar situación del BCRA, sin cambios.`);
                 noData++;
-                await client.query(
-                    'UPDATE portfolio_cuits SET last_processed_period = $1, current_status = 0, situacion = 0 WHERE cuit = $2',
-                    [currentPeriod, item.cuit]
-                );
                 continue;
             }
 
             const newStatus = newStatusNum;
             const prevStatus = parseInt(item.current_status, 10);
+
+            if (newStatus === prevStatus) {
+                continue;
+            }
             let trend = 'stable';
             if (newStatus > prevStatus) trend = 'down';
             else if (newStatus < prevStatus) trend = 'up';

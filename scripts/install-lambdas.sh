@@ -36,7 +36,7 @@ echo ""
 echo "==> Copiando módulo compartido (shared/enqueue.js)"
 for lambda_dir in \
   "${BACKEND_DIR}/simulations/handler" \
-  "${BACKEND_DIR}/b2b-evaluations"; do
+  "${BACKEND_DIR}/b2b-evaluations-post"; do
   mkdir -p "${lambda_dir}/shared"
   cp "${BACKEND_DIR}/shared/enqueue.js" "${lambda_dir}/shared/enqueue.js"
   echo "    → ${lambda_dir#${BACKEND_DIR}/}/shared/enqueue.js"
