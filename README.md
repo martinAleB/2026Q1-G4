@@ -355,10 +355,9 @@ Para los despliegues formales en la rama principal (`main`), el pipeline de ejec
 
 Algunas aclaraciones finales con respecto a las funcionalidades de este trabajo:
 
-- <b>API BCRA</b>: La funcionalidad de la API provista por el BCRA no es consistente, algunas veces las request logran llegar a destino y se obtiene una respuesta, pero otras no. Se intentó de distintas formas y con distintos headers, y se dejó funcionando la configuración que mejores resultados arrojó.
+- <b>API BCRA</b>: La funcionalidad de la API provista por el BCRA no es consistente, algunas veces las request logran llegar a destino y se obtiene una respuesta, pero otras no. Se intentó de distintas formas, y se dejó funcionando la configuración que mejores resultados arrojó.
 - <b>Funcionalidad de Simulación</b>: El modelo de Machine Learning corre en el engine de Python y persiste el score; a partir de ahí, los productos elegibles y no elegibles ya se calculan en el backend (Lambda `recommendations-get` para el dashboard y `b2b-evaluations-get` para la API externa), cruzando el score contra el catálogo de productos de la Fintech. El frontend solo consume y muestra esas recomendaciones.
 - <b>Funcionalidad como API</b>: El sistema expone una API B2B (rutas `/v1/evaluations`) para que las Fintech integren la evaluación crediticia en sus propios sistemas. Se autentica con API keys (`Authorization: Bearer presti_live_...`) validadas por un Lambda authorizer contra la tabla `api-clients`, y las credenciales se generan y rotan desde el panel de **Integración** del dashboard. El `POST` encola una evaluación por CUIT y devuelve un `task_id`; el `GET` consulta el resultado junto con los productos recomendados.
-- <b>Cartera sobre RDS</b>: El control de cartera y el simulador de escenarios dejaron de usar DynamoDB y ahora corren sobre PostgreSQL en RDS (detrás de un RDS Proxy), porque necesitan consultas relacionales y agregaciones sobre toda la cartera que DynamoDB no resuelve de forma natural.
 - <b>Control de Cartera</b>: Se agregó la opción de ejecutar la lambda de control desde el dashboard a modo demostrativo. Está configurado para correr en el primer día del mes (los datos se actualizan en los últimos del mes anterior).
 
 ### Decisiones de Seguridad y Hallazgos de `tfsec`
