@@ -12,6 +12,10 @@ La plataforma cuenta principalmente con las siguientes funcionalidades represent
 
 - <b>Control de Cartera</b>: Monitoreo continuo y centralizado del estado crediticio e historial de deudas de los CUITs en cartera. Permite visualizar tendencias de comportamiento de pagos (mejorando, empeorando o estable) y soporta tanto actualizaciones manuales como automáticas programadas (mediante crons mensuales).
 
+- <b>Simulador de Escenarios</b>: Herramienta para proyectar el impacto de modificar los parámetros de elegibilidad sobre la totalidad de la cartera ya evaluada, sin afectar la configuración real. Permite comparar cuántos clientes se aprobarían o rechazarían con los valores actuales frente a los simulados antes de aplicar un cambio.
+
+- <b>API de Integración (B2B)</b>: Endpoints REST para que las Fintech integren la evaluación crediticia en sus propios sistemas, autenticados mediante API keys que se generan y rotan desde el panel.
+
 <details>
   <summary>Contenidos</summary>
   <ol>
@@ -41,7 +45,7 @@ La plataforma cuenta principalmente con las siguientes funcionalidades represent
 cloud-presti/
 ├── frontend/               # SPA React + Vite (dashboard fintech)
 ├── engine/                 # Pipeline Python de training del modelo crediticio
-├── backend/                # 14 Lambdas — Node.js (13) + Python (simulations-engine)
+├── backend/                # 20 Lambdas (19 Node.js + 1 Python para el engine de simulaciones)
 ├── terraform/              # Stack principal de infra (root module)
 │   └── modules/
 │       └── network/        # Módulo interno de VPC + subnets + RTs + SGs + endpoints
@@ -80,9 +84,10 @@ Una vez completado el bootstrap, se puede proceder con el aprovisionamiento de l
 1. En la pestaña **Actions**, seleccionar el workflow **Terraform Apply**.
 2. Hacer clic en **Run workflow**, seleccionar la rama `main` y presionar el botón verde.
 3. Este pipeline ejecutará de forma automática los siguientes pasos secuenciales:
-   * **Instalación de dependencias**: Se descargan y compilan las dependencias de todas las Lambdas.
+   * **Instalación de dependencias**: Se descargan en paralelo las dependencias de todas las Lambdas Node, se copia el módulo compartido (`shared/enqueue.js`) y se compila el engine de Python.
    * **Validación y Plan de Terraform**: Se genera y valida de forma estricta el plan de ejecución de infraestructura.
-   * **Terraform Apply**: Se aprovisionan de forma segura todos los recursos en la nube de AWS (red VPC, DynamoDB, Lambdas, SQS, API Gateway, Cognito).
+   * **Terraform Apply**: Se aprovisionan de forma segura todos los recursos en la nube de AWS (red VPC, DynamoDB, RDS PostgreSQL con RDS Proxy, Secrets Manager, Lambdas, SQS, API Gateway, Cognito).
+   * **Migraciones de Base de Datos**: Se invoca la Lambda `db-migrations` (vía `scripts/migrate.sh up`) para aplicar las migraciones de `node-pg-migrate` y dejar el esquema de PostgreSQL al día.
    * **Compilación del Frontend**: Se inyectan dinámicamente las variables de entorno producidas por Terraform (como el endpoint de API Gateway y el ID de cliente de Cognito) en un archivo `.env.production` en React.
    * **Despliegue Web**: Se compila la SPA de React y se sincronizan los archivos construidos con el bucket S3 de hosting web.
 4. Al finalizar, en la salida del workflow o en los outputs de Terraform se podrán encontrar el endpoint de API Gateway y la URL pública de la aplicación para comenzar con su utilización.
@@ -107,6 +112,7 @@ A continuación se detalla la guía paso a paso para la ejecución de los flujos
 2. **Formulario de Registro**: Es redirigido de forma segura a la pantalla de registro, donde se solicita ingresar una contraseña segura que cumpla con los estándares requeridos (mayúsculas, minúsculas, números y longitud mínima).
 3. **Confirmación**: Se envía de manera automática un código de confirmación a la dirección de correo electrónico provista.
 4. **Validación de la Cuenta**: Al ingresar el código recibido, la cuenta queda activa y configurada de forma inmediata con los parámetros generales y reglas de negocio por defecto para la Fintech.
+5. **Onboarding**: La primera vez que ingresa, se solicita el nombre de la Fintech. Hasta completarlo, el usuario es redirigido a la pantalla de onboarding antes de poder acceder al resto del panel.
 
 ### 2. Configuración de Parámetros Generales
 Desde la pestaña **Parámetros**, la Fintech establece las reglas de exclusión automática que se evaluarán para cada solicitante antes de procesar el modelo de Machine Learning.
@@ -148,6 +154,19 @@ La sección de **Cartera** sirve como un centro de control unificado del comport
 * **Actualización Periódica**: La información crediticia de la cartera se actualiza automáticamente todos los meses de forma programada y transparente.
 * **Actualización Bajo Demanda**: El usuario puede presionar el botón "Actualizar cartera" en el dashboard para forzar una sincronización manual e inmediata de todos los registros de deudores con el fin de ver reflejados los datos actualizados al instante.
 
+### 7. Simulador de Escenarios
+Desde la pestaña **Escenarios**, la Fintech puede medir el impacto de cambiar sus criterios de elegibilidad sobre toda la cartera ya evaluada, sin tocar la configuración real ni volver a consultar el BCRA:
+* **Parámetros Ajustables**: Se modifican mediante controles deslizantes los mismos seis criterios de la *Configuración de Parámetros* (situación crediticia máxima, límite de entidades, deuda máxima, meses mínimos en situación 1, días de atraso máximos y procesos judiciales).
+* **Comparativa Inmediata**: El sistema recorre la cartera en PostgreSQL y devuelve cuántos clientes se aprobarían con la configuración actual frente a la simulada, los nuevos elegibles y los nuevos rechazados.
+* **Análisis Visual**: Se muestran gráficos de tasa de aprobación, desglose de los motivos de rechazo, distribución de scores, deuda elegible y un perfil general de la cartera, para tomar decisiones informadas antes de aplicar un cambio.
+
+### 8. Integración vía API (B2B)
+Desde la pestaña **Integración**, la Fintech gestiona el acceso programático a la plataforma para integrar la evaluación crediticia en sus propios sistemas:
+* **Generación de Credenciales**: Se genera una API key con el formato `presti_live_...`. La clave completa se muestra **una única vez** al crearse; el sistema solo almacena su hash SHA256, nunca el valor en claro. Generar una nueva clave rota y desactiva automáticamente la anterior.
+* **Documentación Integrada**: El panel incluye ejemplos de uso (con `curl`) de los dos endpoints públicos, autenticados con el encabezado `Authorization: Bearer presti_live_...`:
+  * **`POST /v1/evaluations`**: Encola una evaluación enviando el CUIT del solicitante y devuelve un `task_id` con estado `PROCESSING`.
+  * **`GET /v1/evaluations`**: Consulta el resultado de una evaluación (por `task_id` o por CUIT) y, si está completada, devuelve el score y los productos recomendados.
+
 <p align="right">(<a href="#presti---cloud-computing">Volver</a>)</p>
 
 ## Descripción de Módulos
@@ -157,12 +176,12 @@ El proyecto está diseñado bajo un enfoque modular, utilizando **módulos** (co
 ### 1. Módulo Interno de Red (`terraform/modules/network/`)
 Módulo local reutilizable que encapsula el aprovisionamiento de la VPC y el plano de red seguro:
 * **Entradas Declarativas**: Recibe configuraciones en variables de tipo objeto (`vpc_config`, `subnets_config`, `route_tables_config`, `security_groups_config`, `vpc_endpoints_config`).
-* **Aislamiento**: Crea subnets públicas (para NAT Gateways e Internet Gateway) y privadas (para Lambdas en VPC).
-* **Seguridad y Endpoints**: Implementa Security Groups con soporte para referencias cruzadas (por ejemplo, permitir tráfico únicamente del Security Group de Lambdas hacia los VPC Interface Endpoints).
-* **VPC Endpoints**: Crea endpoints de tipo **Gateway** para S3 y DynamoDB (evitando el tráfico a través de internet) y de tipo **Interface** para SQS en las subnets privadas.
+* **Aislamiento**: Crea tres capas de subnets distribuidas en dos Zonas de Disponibilidad: públicas (para NAT Gateways e Internet Gateway), privadas para las Lambdas en VPC y un set privado dedicado a la base de datos RDS, sin ruta a internet para mantenerla completamente aislada.
+* **Seguridad y Endpoints**: Implementa Security Groups con soporte para referencias cruzadas (por ejemplo, permitir tráfico únicamente del Security Group de Lambdas hacia los VPC Interface Endpoints, o habilitar el puerto 5432 de PostgreSQL desde las Lambdas hacia el Security Group de RDS).
+* **VPC Endpoints**: Crea endpoints de tipo **Gateway** para S3 y DynamoDB (evitando el tráfico a través de internet) y de tipo **Interface** para SQS, CloudWatch Logs, Secrets Manager y KMS en las subnets privadas.
 
 ### 2. Módulo Público de DynamoDB (`terraform-aws-modules/dynamodb-table/aws` v4.4.0)
-Módulo del registry oficial instanciado **5 veces** para proveer persistencia aislada a nivel de tabla bajo demanda (`billing_mode = PAY_PER_REQUEST`):
+Módulo del registry oficial instanciado **5 veces** para proveer persistencia aislada a nivel de tabla bajo demanda (`billing_mode = PAY_PER_REQUEST`). La cartera de deudores (`portfolio`) dejó de ser una tabla DynamoDB y se migró a PostgreSQL en RDS (ver *Otros Recursos Destacados*), por lo que ya no se aprovisiona mediante este módulo:
 1. **`dynamodb_simulations`** (`${stack_name}-simulations`):
    * Hash key: `sub` | Range key: `sk`.
    * **GSI `task-id-sub-index`**: Indexa `task_id` (Hash) y `sub` (Range). Permite a `recommendations-get` y `simulations-results` buscar directamente por el ID de la tarea de forma sumamente rápida, garantizando aislamiento multi-inquilino.
@@ -172,10 +191,9 @@ Módulo del registry oficial instanciado **5 veces** para proveer persistencia a
    * Hash key: `sub` | Range key: `product_id` (catálogo de créditos de la Fintech).
 4. **`dynamodb_user`** (`${stack_name}-user`):
    * Hash key: `sub` | Range key: `cuit` (vínculo entre Fintech y CUITs consultados).
-5. **`dynamodb_portfolio`** (`${stack_name}-portfolio`):
-   * Hash key: `pk` | Range key: `sk`.
-   * **GSI `gsi1`**: Indexa `gsi1_pk` y `gsi1_sk` para la resolución inversa Fintech -> CUIT.
-   * **Sparse GSI `record-type-pk-index`**: Indexa `record_type` (Hash) y `pk` (Range). Al ser sparse, solo almacena ítems del tipo `INFO`, lo que permite al actualizador mensual iterar únicamente los CUITs de forma ágil y barata sin incurrir en `Scan` globales costosos sobre registros de control.
+5. **`dynamodb_api_clients`** (`${stack_name}-api-clients`):
+   * Hash key: `api_key_id` (credenciales de la API B2B de cada Fintech).
+   * **GSI `fintech-sub-index`**: Indexa `fintech_sub` (Hash) para resolver todas las keys de una Fintech. Cada ítem guarda el hash SHA256 de la API key (nunca la key en claro) y un flag `active`, que es justamente lo que valida el authorizer Lambda de la API externa.
 
 <p align="right">(<a href="#presti---cloud-computing">Volver</a>)</p>
 
@@ -185,9 +203,9 @@ El diseño de la infraestructura en Terraform utiliza avanzadas metodologías de
 
 ### 1. Meta-Argumentos Utilizados
 * **`for_each`**: Es el motor de la iteración. Evita la duplicación masiva de código instanciando múltiples recursos dinámicamente. Se utiliza para:
-  * Las 13 Lambdas del Core y sus configuraciones detalladas.
-  * Los 14 grupos de logs en CloudWatch (asegurando el ciclo de vida coordinado con cada función).
-  * Los permisos de invocación y mapeo de triggers.
+  * Las 19 Lambdas del Core (más la `auth-callback`, definida aparte) y sus configuraciones detalladas.
+  * Los 20 grupos de logs en CloudWatch (asegurando el ciclo de vida coordinado con cada función).
+  * Las rutas e integraciones de API Gateway (`local.api_routes`, `local.api_integrations`), junto con los permisos de invocación y el mapeo de triggers.
   * La creación modular de las 5 tablas DynamoDB.
   * La definición de subnets, tablas de ruteo, reglas de seguridad y endpoints en el módulo `network`.
   * La asignación de alarmas de CloudWatch para métricas de error.
@@ -213,6 +231,8 @@ El diseño de la infraestructura en Terraform utiliza avanzadas metodologías de
 * **`data "archive_file"`**: Empaqueta el código de cada Lambda en archivos ZIP al vuelo durante el ciclo del plan/apply. El cálculo nativo de su `source_code_hash` permite que Terraform detecte cambios en el código de NodeJS/Python y redespliegue únicamente las Lambdas modificadas.
 * **`data "aws_iam_role"`**: Referencia y consume el rol preexistente `LabRole` provisto por AWS Academy, necesario por las severas restricciones del entorno educativo.
 * **`aws_cloudwatch_log_group`**: Declara explícitamente los grupos de logs para configurar una retención estricta de 7 días, previniendo costos descontrolados por retención indefinida (default de AWS).
+* **RDS PostgreSQL + RDS Proxy (`aws_db_instance`, `aws_db_proxy`, `aws_secretsmanager_secret`)**: El control de cartera y el simulador de escenarios se apoyan en una base de datos PostgreSQL relacional (`postgres 15.13`, `db.t3.micro`, Multi-AZ, cifrada y con almacenamiento autoescalable de 20 a 100 GB) alojada en las subnets privadas dedicadas. Delante de ella se aprovisiona un **RDS Proxy** que multiplexa y reutiliza las conexiones, evitando que la naturaleza efímera y altamente concurrente de las Lambdas agote el límite de conexiones de PostgreSQL. Las credenciales se generan con `random_password` y se guardan en **Secrets Manager**, de donde las leen tanto el proxy como las Lambdas en tiempo de ejecución (nunca quedan hardcodeadas). El esquema de las tablas (`portfolio_cuits` y `portfolio_tracking`) lo administra la Lambda `db-migrations` mediante `node-pg-migrate`.
+* **`aws_apigatewayv2_authorizer`**: Define dos autorizadores sobre la misma API HTTP. Uno de tipo **JWT** valida los tokens de Cognito para las rutas del dashboard, y uno de tipo **REQUEST** (Lambda authorizer `b2b-authorizer`) valida las API keys de la API B2B (`/v1/*`) calculando su hash SHA256 y comparándolo contra la tabla `api-clients`.
 
 <p align="right">(<a href="#presti---cloud-computing">Volver</a>)</p>
 
@@ -257,12 +277,20 @@ El mismo job se ejecuta en paralelo para el stack de **bootstrap** (`terraform-b
 
 ### 2. Pipeline de Despliegue con Plan Guardado (`terraform-apply.yml`)
 Para los despliegues formales en la rama principal (`main`), el pipeline de ejecución remota de Terraform implementa las mejores prácticas de infraestructura como código (IaC):
-1. **Inicialización (`terraform init`)**: Se conecta al backend de S3 remoto configurando los locks en DynamoDB.
-2. **Validación y Chequeo de Formato (`validate` y `fmt`)**: Valida la integridad del código.
-3. **Plan Guardado (`terraform plan -out=tfplan`)**: Genera el plan de ejecución y lo persiste en un archivo físico binario (`tfplan`). Esto garantiza que los cambios planificados y auditados sean **exactamente los mismos** que se aplicarán en el paso posterior, mitigando problemas por drifts de estado de último segundo.
-4. **Aplicación del Plan (`terraform apply tfplan`)**: Ejecuta los cambios de manera directa y predecible.
+1. **Preparación de Artefactos**: Antes de tocar Terraform se instala `uv` y se ejecuta `scripts/install-lambdas.sh`, que resuelve las dependencias de todas las Lambdas Node en paralelo, copia el módulo compartido (`shared/enqueue.js`) y compila el engine de Python.
+2. **Inicialización (`terraform init`)**: Se conecta al backend de S3 remoto configurando los locks en DynamoDB.
+3. **Validación y Chequeo de Formato (`validate` y `fmt`)**: Valida la integridad del código.
+4. **Plan Guardado (`terraform plan -out=tfplan`)**: Genera el plan de ejecución y lo persiste en un archivo físico binario (`tfplan`). Esto garantiza que los cambios planificados y auditados sean **exactamente los mismos** que se aplicarán en el paso posterior, mitigando problemas por drifts de estado de último segundo.
+5. **Aplicación del Plan (`terraform apply tfplan`)**: Ejecuta los cambios de manera directa y predecible.
+6. **Migraciones de Base de Datos**: Una vez aprovisionada la infraestructura, se ejecuta `scripts/migrate.sh up`, que invoca la Lambda `db-migrations` para aplicar las migraciones de `node-pg-migrate` y dejar el esquema de PostgreSQL al día.
 
 ```yaml
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install Lambda dependencies
+        run: bash scripts/install-lambdas.sh
+
       - name: Terraform Init
         run: bash scripts/terraform-init.sh
 
@@ -283,6 +311,10 @@ Para los despliegues formales en la rama principal (`main`), el pipeline de ejec
         if: github.ref == 'refs/heads/main'
         run: terraform apply tfplan
         working-directory: terraform
+
+      - name: Run DB Migrations
+        if: github.ref == 'refs/heads/main'
+        run: bash scripts/migrate.sh up
 ```
 
 <p align="right">(<a href="#presti---cloud-computing">Volver</a>)</p>
@@ -291,8 +323,9 @@ Para los despliegues formales en la rama principal (`main`), el pipeline de ejec
 
 Algunas aclaraciones finales con respecto a las funcionalidades de este trabajo:
 - <b>API BCRA</b>: La funcionalidad de la API provista por el BCRA no es consistente, algunas veces las request logran llegar a destino y se obtiene una respuesta, pero otras no. Se intentó de distintas formas y con distintos headers, y se dejó funcionando la configuración que mejores resultados arrojó.
-- <b>Funcionalidad de Simulación</b>: Actualmente, las simulaciones arrojan la predición del score obtenida del modelo, y en base a los productos del usuario se realiza el cálculo en el frontend. La idea es para el TP4 que la simulación devuelva directamente los productos recomendados.
-- <b>Funcionalidad como API</b>: Si bien se pretende que el sistema provea una API que las Fintech puedan integrar para aplicar las funcionalidades, esta feature se implementará en el TP4.
+- <b>Funcionalidad de Simulación</b>: El modelo de Machine Learning corre en el engine de Python y persiste el score; a partir de ahí, los productos elegibles y no elegibles ya se calculan en el backend (Lambda `recommendations-get` para el dashboard y `b2b-evaluations-get` para la API externa), cruzando el score contra el catálogo de productos de la Fintech. El frontend solo consume y muestra esas recomendaciones.
+- <b>Funcionalidad como API</b>: El sistema expone una API B2B (rutas `/v1/evaluations`) para que las Fintech integren la evaluación crediticia en sus propios sistemas. Se autentica con API keys (`Authorization: Bearer presti_live_...`) validadas por un Lambda authorizer contra la tabla `api-clients`, y las credenciales se generan y rotan desde el panel de **Integración** del dashboard. El `POST` encola una evaluación por CUIT y devuelve un `task_id`; el `GET` consulta el resultado junto con los productos recomendados.
+- <b>Cartera sobre RDS</b>: El control de cartera y el simulador de escenarios dejaron de usar DynamoDB y ahora corren sobre PostgreSQL en RDS (detrás de un RDS Proxy), porque necesitan consultas relacionales y agregaciones sobre toda la cartera que DynamoDB no resuelve de forma natural.
 - <b>Control de Cartera</b>: Se agregó la opción de ejecutar la lambda de control desde el dashboard a modo demostrativo. Está configurado para correr en el primer día del mes (los datos se actualizan en los últimos del mes anterior).
 
 ### Decisiones de Seguridad y Hallazgos de `tfsec`
@@ -300,7 +333,7 @@ Algunas aclaraciones finales con respecto a las funcionalidades de este trabajo:
 El check de `tfsec` en CI reporta algunos hallazgos que se decidió **no resolver con keys propias (CMK)** de forma deliberada. Las decisiones tomadas son:
 
 - <b>Cifrado en reposo: estrategia mixta</b>:
-  - Las colas SQS (`main`, `main_dlq`) y las tablas DynamoDB (`tf_lock` en bootstrap + las 5 del módulo en `terraform/main.tf`) se cifran con las keys gestionadas por AWS (`alias/aws/sqs`, `alias/aws/dynamodb`), no con Customer Managed Keys. Esto es consistente con la práctica de la cátedra y evita el costo y la operativa adicional de mantener KMS keys propias.
+  - Las colas SQS (`main`, `main_dlq`), las tablas DynamoDB (`tf_lock` en bootstrap más las 5 del módulo en `terraform/main.tf` y `api-for-fintechs.tf`) y la instancia RDS PostgreSQL (`storage_encrypted = true`) se cifran con las keys gestionadas por AWS (`alias/aws/sqs`, `alias/aws/dynamodb` y `aws/rds` respectivamente), no con Customer Managed Keys. Esto es consistente con la práctica de la cátedra y evita el costo y la operativa adicional de mantener KMS keys propias.
   - Los buckets S3 `model_artifacts` y `tf_state` se cifran con SSE-KMS apuntando a `alias/aws/s3`. Funciona porque ambos buckets se leen únicamente desde principals con credenciales IAM (las Lambdas con `LabRole` y el CLI de Terraform respectivamente), que pueden hacer `kms:Decrypt` sobre la key gestionada por AWS.
   - El bucket S3 `frontend` se cifra con SSE-S3 (`AES256`), **no con SSE-KMS**, por una incompatibilidad inherente del servicio: el bucket sirve archivos como sitio web estático a usuarios anónimos (`Principal=*`), y SSE-KMS exige que el requester tenga `kms:Decrypt` sobre la KMS key — permiso que el público anónimo no puede tener. Si se usa SSE-KMS, los objetos quedan no descargables (HTTP 400 `InvalidRequest`). Por eso este bucket queda obligatoriamente en SSE-S3 mientras se mantenga el modelo de hosting público directo desde S3.
 
